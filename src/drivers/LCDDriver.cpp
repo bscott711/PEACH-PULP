@@ -36,21 +36,21 @@ static uint32_t lcdMessageTimestamp = 0;
 
 static bool isDarkMode = true;
 
-// Get current theme colors based on the active mode
+// Get current theme colors based on the active mode (Inverted to correct for TFT_INVERSION_ON)
 uint16_t getBgColor() {
-  return isDarkMode ? TFT_BLACK : 0xF7BE; // Pure black or soft light white (#F5F5FA)
+  return isDarkMode ? 0xF7BE : TFT_BLACK; // Swapped to account for TFT inversion (0xF7BE displays as deep dark)
 }
 
 uint16_t getTextColor() {
-  return isDarkMode ? COLOR_WHITE : 0x18C3; // Soft white or deep charcoal (#18181A)
+  return isDarkMode ? 0x18C3 : COLOR_WHITE; // Swapped (0x18C3 displays as crisp soft white)
 }
 
 uint16_t getMutedColor() {
-  return isDarkMode ? COLOR_MUTED : 0x632C; // Slate gray or medium gray (#60626A)
+  return isDarkMode ? 0x632C : COLOR_MUTED; // Swapped
 }
 
 uint16_t getBorderColor() {
-  return isDarkMode ? COLOR_BORDER : 0xC618; // Dark border gray or elegant light border gray (#C0C0C8)
+  return isDarkMode ? 0xC618 : COLOR_BORDER; // Swapped
 }
 
 // Draw a crescent moon (Dark Mode) or Sun (Light Mode) in the top-right corner
@@ -118,7 +118,7 @@ void LCDInit() {
   touchscreen.begin(touchSPI);
   touchscreen.setRotation(3); // Match display rotation
 
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(getBgColor());
   
   lcdMutex = xSemaphoreCreateMutex();
   if (lcdMutex == NULL) {
@@ -254,6 +254,32 @@ void executeButtonAction(int buttonId) {
   }
 }
 
+void handleSliderTouch(int sliderId, int t_x) {
+  if (sliderId == 10) {
+    int dx = t_x - 80;
+    int rawSetpoint = (dx * 100) / 70;
+    rawSetpoint = std::max(-100, std::min(100, rawSetpoint));
+    // Round to nearest 5 for premium feel
+    int setpoint = (rawSetpoint >= 0) ? ((rawSetpoint + 2) / 5) * 5 : ((rawSetpoint - 2) / 5) * 5;
+    setpoint = std::max(-100, std::min(100, setpoint));
+    if (systemState.motor1SpeedSetpoint != setpoint) {
+      systemState.motor1SpeedSetpoint = setpoint;
+      LCD_setMessage("M1 Speed Set");
+    }
+  } else if (sliderId == 11) {
+    int dx = t_x - 240;
+    int rawSetpoint = (dx * 100) / 70;
+    rawSetpoint = std::max(-100, std::min(100, rawSetpoint));
+    // Round to nearest 5 for premium feel
+    int setpoint = (rawSetpoint >= 0) ? ((rawSetpoint + 2) / 5) * 5 : ((rawSetpoint - 2) / 5) * 5;
+    setpoint = std::max(-100, std::min(100, setpoint));
+    if (systemState.motor2SpeedSetpoint != setpoint) {
+      systemState.motor2SpeedSetpoint = setpoint;
+      LCD_setMessage("M2 Speed Set");
+    }
+  }
+}
+
 void process_touch() {
   static int heldButtonId = 0;
   static uint32_t touchStartTime = 0;
@@ -280,16 +306,23 @@ void process_touch() {
     t_x = std::max((uint16_t)0, std::min((uint16_t)320, t_x));
     t_y = std::max((uint16_t)0, std::min((uint16_t)240, t_y));
 
-    // Determine if we are touching a button
-    if (isPointInRect(t_x, t_y, 10, 60, 60, 40))       currentButtonId = 1; // M1 -
-    else if (isPointInRect(t_x, t_y, 90, 60, 60, 40))  currentButtonId = 2; // M1 +
-    else if (isPointInRect(t_x, t_y, 10, 110, 140, 40)) currentButtonId = 3; // M1 Toggle
-    else if (isPointInRect(t_x, t_y, 170, 60, 60, 40)) currentButtonId = 4; // M2 -
-    else if (isPointInRect(t_x, t_y, 250, 60, 60, 40)) currentButtonId = 5; // M2 +
-    else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
-    else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
-    else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
-    else if (isPointInRect(t_x, t_y, 270, 0, 50, 55))    currentButtonId = 9; // Crescent Moon Theme Switch! (Enlarged target)
+    // Touch capturing: if dragging a slider, lock focus on it
+    if (heldButtonId == 10 || heldButtonId == 11) {
+      currentButtonId = heldButtonId;
+    } else {
+      // Determine if we are touching a button
+      if (isPointInRect(t_x, t_y, 10, 60, 60, 40))         currentButtonId = 1; // M1 -
+      else if (isPointInRect(t_x, t_y, 90, 60, 60, 40))    currentButtonId = 2; // M1 +
+      else if (isPointInRect(t_x, t_y, 10, 110, 140, 40))  currentButtonId = 3; // M1 Toggle
+      else if (isPointInRect(t_x, t_y, 170, 60, 60, 40))   currentButtonId = 4; // M2 -
+      else if (isPointInRect(t_x, t_y, 250, 60, 60, 40))   currentButtonId = 5; // M2 +
+      else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
+      else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
+      else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
+      else if (isPointInRect(t_x, t_y, 270, 0, 50, 55))    currentButtonId = 9; // Crescent Moon Theme Switch! (Enlarged target)
+      else if (isPointInRect(t_x, t_y, 10, 25, 140, 33))   currentButtonId = 10; // M1 Slider (y = 25 to 58)
+      else if (isPointInRect(t_x, t_y, 170, 25, 140, 33))  currentButtonId = 11; // M2 Slider (y = 25 to 58)
+    }
 
     if (currentButtonId != 0) {
       lastValidButtonId = currentButtonId;
@@ -303,17 +336,21 @@ void process_touch() {
     activeButtonId = lastValidButtonId;
   }
 
-  // Update pressedButtonId for visual feedback (glow effect)
-  pressedButtonId = activeButtonId;
+  // Update pressedButtonId for visual feedback (glow effect, hide on sliders)
+  pressedButtonId = (activeButtonId < 10) ? activeButtonId : 0;
 
   if (activeButtonId != 0) {
     if (activeButtonId != heldButtonId) {
       heldButtonId = activeButtonId;
       touchStartTime = now;
       lastRepeatTime = now;
-      executeButtonAction(activeButtonId);
+      if (activeButtonId >= 10) {
+        handleSliderTouch(activeButtonId, t_x);
+      } else {
+        executeButtonAction(activeButtonId);
+      }
     } else {
-      // Continuous holding for speed adjustments
+      // Continuous holding for speed adjustments or sliding
       if (activeButtonId == 1 || activeButtonId == 2 || activeButtonId == 4 || activeButtonId == 5) {
         if (now - touchStartTime > 450) { // Initial repeat delay of 450ms
           if (now - lastRepeatTime > 120) { // Repeat speed increment every 120ms
@@ -321,6 +358,8 @@ void process_touch() {
             lastRepeatTime = now;
           }
         }
+      } else if (activeButtonId >= 10) {
+        handleSliderTouch(activeButtonId, t_x);
       }
     }
   } else {
@@ -349,7 +388,7 @@ void drawButton(int x, int y, int w, int h, const char* label, bool isActive, bo
   } else if (isActive) {
     // Button is active (e.g. Stop button when running): draw in vibrant mint green
     borderColor = COLOR_MINT;
-    fillColor = isDarkMode ? 0x0A24 : 0xEE7D; // Very dark green or soft mint green background
+    fillColor = isDarkMode ? 0xEE7D : 0x0A24; // Swapped to account for TFT inversion
     textColor = COLOR_MINT;
   } else {
     // Default inactive button
@@ -420,12 +459,12 @@ void draw_menu() {
     tft.setTextDatum(TC_DATUM);
     tft.drawString("MOTOR 1", 80, 5, 2);
     tft.drawString("MOTOR 2", 240, 5, 2);
-    tft.drawFastVLine(160, 0, 160, getBorderColor());
+    tft.drawFastVLine(160, 30, 125, getBorderColor()); // Starts below title, goes down to horizontal line
     tft.drawFastHLine(0, 155, 320, getBorderColor());
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v2.6", 160, 5, 1);
+    tft.drawString("PEACH PULP v2.7", 160, 5, 1);
     drawThemeIcon();
   }
 
