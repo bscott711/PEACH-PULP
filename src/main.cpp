@@ -61,6 +61,9 @@ const MotorConfig motor2Config = {
 MotorNode g_motor1Node(motor1Config);
 MotorNode g_motor2Node(motor2Config);
 
+volatile bool isOTA = false;
+volatile int otaProgress = 0;
+
 void setup() {
   // Begin USB serial for debugging/monitoring
   Serial.begin(115200);
@@ -97,9 +100,6 @@ void setup() {
     }
     ArduinoOTA.setHostname("peachpulp");
     
-volatile bool isOTA = false;
-volatile int otaProgress = 0;
-
     // Custom OTA Callbacks
     ArduinoOTA.onStart([&]() {
       isOTA = true;
