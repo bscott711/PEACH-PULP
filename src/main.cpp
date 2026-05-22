@@ -3,6 +3,12 @@
 #include "tasks/LCD_task.h"
 #include "tasks/MotorNode.h"
 #include "drivers/LCDDriver.h"
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <ArduinoOTA.h>
+
+const char *ssid = "sdsmtopn";
+const char *password = "";
 
 // Shared UART pins for TMC2209 (Changed to avoid CYD Touch CS conflict on GPIO 33)
 #define UART_RX 22
@@ -43,6 +49,23 @@ void setup() {
   // Initialize System State from NVS
   initSystemState();
 
+  // Initialize WiFi
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  
+  // Wait a bit for WiFi
+  for(int i=0; i<15 && WiFi.status() != WL_CONNECTED; i++) {
+    vTaskDelay(pdMS_TO_TICKS(500));
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    if (MDNS.begin("peachpulp")) {
+      ESP_LOGI("MAIN", "mDNS responder started: peachpulp.local");
+    }
+    ArduinoOTA.setHostname("peachpulp");
+    ArduinoOTA.begin();
+  }
+
   // Inits
   LCDInit();
 
@@ -73,6 +96,6 @@ void setup() {
 }
 
 void loop() {
-  // Delete the default Arduino loop task to reclaim its memory stack
-  vTaskDelete(NULL);
+  ArduinoOTA.handle();
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
