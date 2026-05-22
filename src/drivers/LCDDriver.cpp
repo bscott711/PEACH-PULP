@@ -16,6 +16,15 @@
 #define TOUCH_MISO 39
 #define TOUCH_MOSI 32
 
+// Premium Theme Colors (RGB565)
+#define COLOR_PEACH       0xFD67 // Vibrant peach/orange
+#define COLOR_PEACH_LIGHT 0xFEB2 // Soft peach highlight
+#define COLOR_WHITE       0xF7BE // Soft white text
+#define COLOR_MUTED       0x8C51 // Muted steel gray text
+#define COLOR_BORDER      0x3186 // Subtle dark border gray
+#define COLOR_GOLD        0xFED0 // Warm crescent moon gold
+#define COLOR_MINT        0x2690 // Premium mint green for active state
+
 static SPIClass touchSPI(VSPI);
 static XPT2046_Touchscreen touchscreen(TOUCH_CS); // Polling mode (no IRQ pin) for extreme reliability
 
@@ -24,6 +33,81 @@ TFT_eSPI tft = TFT_eSPI();
 static char lcdActionMessage[32] = "System Initialized";
 static SemaphoreHandle_t lcdMutex = NULL;
 static uint32_t lcdMessageTimestamp = 0;
+
+static bool isDarkMode = true;
+
+// Get current theme colors based on the active mode
+uint16_t getBgColor() {
+  return isDarkMode ? TFT_BLACK : 0xF7BE; // Pure black or soft light white (#F5F5FA)
+}
+
+uint16_t getTextColor() {
+  return isDarkMode ? COLOR_WHITE : 0x18C3; // Soft white or deep charcoal (#18181A)
+}
+
+uint16_t getMutedColor() {
+  return isDarkMode ? COLOR_MUTED : 0x632C; // Slate gray or medium gray (#60626A)
+}
+
+uint16_t getBorderColor() {
+  return isDarkMode ? COLOR_BORDER : 0xC618; // Dark border gray or elegant light border gray (#C0C0C8)
+}
+
+// Draw a crescent moon (Dark Mode) or Sun (Light Mode) in the top-right corner
+void drawThemeIcon() {
+  int cx = 302;
+  int cy = 12;
+  uint16_t bg = getBgColor();
+  
+  tft.fillRect(290, 0, 30, 25, bg); // Clear previous icon
+  
+  if (isDarkMode) {
+    // Crescent Moon
+    int r = 7;
+    tft.fillCircle(cx, cy, r, COLOR_GOLD);
+    tft.fillCircle(cx - 3, cy - 2, r, bg); // Offset overlay with background
+  } else {
+    // Golden Sun
+    int r = 4;
+    tft.fillCircle(cx, cy, r, COLOR_GOLD);
+    tft.drawFastVLine(cx, cy - 7, 15, COLOR_GOLD);
+    tft.drawFastHLine(cx - 7, cy, 15, COLOR_GOLD);
+    tft.drawLine(cx - 4, cy - 4, cx + 4, cy + 4, COLOR_GOLD);
+    tft.drawLine(cx - 4, cy + 4, cx + 4, cy - 4, COLOR_GOLD);
+    tft.fillCircle(cx, cy, r - 1, COLOR_GOLD);
+  }
+}
+
+// Draw a premium speed bar centered on zero
+void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
+  int halfW = width / 2;
+  int startX = centerX - halfW;
+  int targetX = centerX + (setpoint * halfW) / 100;
+  uint16_t bg = getBgColor();
+  
+  // Clear speed bar region cleanly
+  tft.fillRect(startX - 2, y - 2, width + 5, 12, bg);
+  
+  // Draw subtle background track line
+  tft.drawFastHLine(startX, y + 2, width, getBorderColor());
+  
+  // Draw center zero tick mark
+  tft.drawFastVLine(centerX, y, 5, getMutedColor());
+  
+  if (isRunning) {
+    // Fill from center (0) to setpoint coordinate
+    int fillX = std::min(centerX, targetX);
+    int fillW = std::abs(targetX - centerX);
+    if (fillW > 0) {
+      tft.fillRect(fillX, y + 1, fillW, 3, COLOR_PEACH);
+    }
+  }
+  
+  // Draw the setpoint tick indicator
+  tft.drawFastVLine(targetX, y - 1, 7, COLOR_GOLD);
+}
+
+
 
 void LCDInit() {
   tft.begin();
@@ -40,15 +124,9 @@ void LCDInit() {
   if (lcdMutex == NULL) {
     ESP_LOGE("LCD", "Failed to create LCD string mutex");
   }
-  
-  // Static decorations
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextDatum(TC_DATUM);
-  tft.drawString("MOTOR 1", 80, 5, 2);
-  tft.drawString("MOTOR 2", 240, 5, 2);
-  tft.drawFastVLine(160, 0, 160, TFT_DARKGREY);
-  tft.drawFastHLine(0, 155, 320, TFT_DARKGREY);
 }
+
+
 
 void drawOTAScreen(int percent) {
   static int lastPercent = -1;
@@ -133,14 +211,62 @@ bool isPointInRect(uint16_t x, uint16_t y, uint16_t rx, uint16_t ry, uint16_t rw
 // Track which button is currently pressed (0 = none)
 static int pressedButtonId = 0;
 
+void executeButtonAction(int buttonId) {
+  if (buttonId == 1) {
+    systemState.motor1SpeedSetpoint = std::max(-100, systemState.motor1SpeedSetpoint - 10);
+    LCD_setMessage("M1 Speed -");
+  }
+  else if (buttonId == 2) {
+    systemState.motor1SpeedSetpoint = std::min(100, systemState.motor1SpeedSetpoint + 10);
+    LCD_setMessage("M1 Speed +");
+  }
+  else if (buttonId == 3) {
+    systemState.motor1Running = !systemState.motor1Running;
+    LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
+  }
+  else if (buttonId == 4) {
+    systemState.motor2SpeedSetpoint = std::max(-100, systemState.motor2SpeedSetpoint - 10);
+    LCD_setMessage("M2 Speed -");
+  }
+  else if (buttonId == 5) {
+    systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 10);
+    LCD_setMessage("M2 Speed +");
+  }
+  else if (buttonId == 6) {
+    systemState.motor2Running = !systemState.motor2Running;
+    LCD_setMessage(systemState.motor2Running ? "M2 Started" : "M2 Stopped");
+  }
+  else if (buttonId == 7) {
+    systemState.motor1Running = true;
+    systemState.motor2Running = true;
+    LCD_setMessage("All Started");
+  }
+  else if (buttonId == 8) {
+    systemState.motor1Running = false;
+    systemState.motor2Running = false;
+    LCD_setMessage("All Stopped");
+  }
+  else if (buttonId == 9) {
+    // Theme Toggling!
+    isDarkMode = !isDarkMode;
+    LCD_setMessage(isDarkMode ? "Dark Mode Active" : "Light Mode Active");
+    tft.fillScreen(getBgColor());
+  }
+}
+
 void process_touch() {
-  static bool wasTouched = false;
-  static uint32_t lastTouchTime = 0;
+  static int heldButtonId = 0;
+  static uint32_t touchStartTime = 0;
+  static uint32_t lastRepeatTime = 0;
+  static uint32_t lastValidTouchTime = 0;
+  static int lastValidButtonId = 0;
+
   uint16_t t_x = 0, t_y = 0;
-  
   bool isTouched = touchscreen.touched();
   uint16_t raw_x = 0, raw_y = 0;
-  
+  int currentButtonId = 0;
+  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+
   if (isTouched) {
     TS_Point p = touchscreen.getPoint();
     raw_x = p.x;
@@ -153,69 +279,52 @@ void process_touch() {
     // Clamp to screen boundaries
     t_x = std::max((uint16_t)0, std::min((uint16_t)320, t_x));
     t_y = std::max((uint16_t)0, std::min((uint16_t)240, t_y));
+
+    // Determine if we are touching a button
+    if (isPointInRect(t_x, t_y, 10, 60, 60, 40))       currentButtonId = 1; // M1 -
+    else if (isPointInRect(t_x, t_y, 90, 60, 60, 40))  currentButtonId = 2; // M1 +
+    else if (isPointInRect(t_x, t_y, 10, 110, 140, 40)) currentButtonId = 3; // M1 Toggle
+    else if (isPointInRect(t_x, t_y, 170, 60, 60, 40)) currentButtonId = 4; // M2 -
+    else if (isPointInRect(t_x, t_y, 250, 60, 60, 40)) currentButtonId = 5; // M2 +
+    else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
+    else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
+    else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
+    else if (isPointInRect(t_x, t_y, 270, 0, 50, 55))    currentButtonId = 9; // Crescent Moon Theme Switch! (Enlarged target)
+
+    if (currentButtonId != 0) {
+      lastValidButtonId = currentButtonId;
+      lastValidTouchTime = now;
+    }
   }
 
-  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  // Apply debounce filtering: if we had a valid button press recently, maintain it
+  int activeButtonId = 0;
+  if (now - lastValidTouchTime < 150) {
+    activeButtonId = lastValidButtonId;
+  }
 
-  if (isTouched && !wasTouched && (now - lastTouchTime > 200)) {
-    lastTouchTime = now;
-    wasTouched = true;
-    
-    // M1 -
-    if (isPointInRect(t_x, t_y, 10, 60, 60, 40)) {
-      pressedButtonId = 1;
-      systemState.motor1SpeedSetpoint = std::max(0, systemState.motor1SpeedSetpoint - 10);
-      LCD_setMessage("M1 Speed -");
+  // Update pressedButtonId for visual feedback (glow effect)
+  pressedButtonId = activeButtonId;
+
+  if (activeButtonId != 0) {
+    if (activeButtonId != heldButtonId) {
+      heldButtonId = activeButtonId;
+      touchStartTime = now;
+      lastRepeatTime = now;
+      executeButtonAction(activeButtonId);
+    } else {
+      // Continuous holding for speed adjustments
+      if (activeButtonId == 1 || activeButtonId == 2 || activeButtonId == 4 || activeButtonId == 5) {
+        if (now - touchStartTime > 450) { // Initial repeat delay of 450ms
+          if (now - lastRepeatTime > 120) { // Repeat speed increment every 120ms
+            executeButtonAction(activeButtonId);
+            lastRepeatTime = now;
+          }
+        }
+      }
     }
-    // M1 +
-    else if (isPointInRect(t_x, t_y, 90, 60, 60, 40)) {
-      pressedButtonId = 2;
-      systemState.motor1SpeedSetpoint = std::min(100, systemState.motor1SpeedSetpoint + 10);
-      LCD_setMessage("M1 Speed +");
-    }
-    // M1 Toggle
-    else if (isPointInRect(t_x, t_y, 10, 110, 140, 40)) {
-      pressedButtonId = 3;
-      systemState.motor1Running = !systemState.motor1Running;
-      LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
-    }
-    
-    // M2 -
-    else if (isPointInRect(t_x, t_y, 170, 60, 60, 40)) {
-      pressedButtonId = 4;
-      systemState.motor2SpeedSetpoint = std::max(0, systemState.motor2SpeedSetpoint - 10);
-      LCD_setMessage("M2 Speed -");
-    }
-    // M2 +
-    else if (isPointInRect(t_x, t_y, 250, 60, 60, 40)) {
-      pressedButtonId = 5;
-      systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 10);
-      LCD_setMessage("M2 Speed +");
-    }
-    // M2 Toggle
-    else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) {
-      pressedButtonId = 6;
-      systemState.motor2Running = !systemState.motor2Running;
-      LCD_setMessage(systemState.motor2Running ? "M2 Started" : "M2 Stopped");
-    }
-    
-    // START ALL
-    else if (isPointInRect(t_x, t_y, 10, 165, 145, 40)) {
-      pressedButtonId = 7;
-      systemState.motor1Running = true;
-      systemState.motor2Running = true;
-      LCD_setMessage("All Started");
-    }
-    // STOP ALL
-    else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) {
-      pressedButtonId = 8;
-      systemState.motor1Running = false;
-      systemState.motor2Running = false;
-      LCD_setMessage("All Stopped");
-    }
-  } else if (!isTouched) {
-    wasTouched = false;
-    pressedButtonId = 0;
+  } else {
+    heldButtonId = 0;
   }
 }
 
@@ -228,25 +337,35 @@ static uint16_t darkenColor(uint16_t c) {
 }
 
 void drawButton(int x, int y, int w, int h, const char* label, bool isActive, bool pressed) {
-  uint32_t color = isActive ? TFT_GREEN : TFT_BLUE;
-  
+  uint16_t borderColor = getBorderColor();
+  uint16_t textColor = getTextColor();
+  uint16_t fillColor = getBgColor();
+
   if (pressed) {
-    // Filled dark background to indicate press
-    uint16_t fillColor = darkenColor((uint16_t)color);
-    tft.fillRoundRect(x, y, w, h, 3, fillColor);
-    tft.drawRoundRect(x, y, w, h, 3, color);
+    // Button is pressed: glow orange/peach!
+    borderColor = COLOR_PEACH;
+    fillColor = COLOR_PEACH;
+    textColor = TFT_BLACK; // Dark text on glowing peach background
+  } else if (isActive) {
+    // Button is active (e.g. Stop button when running): draw in vibrant mint green
+    borderColor = COLOR_MINT;
+    fillColor = isDarkMode ? 0x0A24 : 0xEE7D; // Very dark green or soft mint green background
+    textColor = COLOR_MINT;
   } else {
-    // Clear interior and draw outline only
-    tft.fillRoundRect(x + 1, y + 1, w - 2, h - 2, 2, TFT_BLACK);
-    tft.drawRoundRect(x, y, w, h, 3, color);
+    // Default inactive button
+    borderColor = getBorderColor();
+    fillColor = getBgColor();
+    textColor = getTextColor();
   }
-  
+
+  tft.fillRoundRect(x, y, w, h, 4, fillColor);
+  tft.drawRoundRect(x, y, w, h, 4, borderColor);
+
   // Draw label with a padding string to clear old text cleanly
   char paddedLabel[16];
   snprintf(paddedLabel, sizeof(paddedLabel), " %-8s ", label);
-  
-  uint16_t bgColor = pressed ? darkenColor((uint16_t)color) : TFT_BLACK;
-  tft.setTextColor(color, bgColor);
+
+  tft.setTextColor(textColor, fillColor);
   tft.setTextDatum(MC_DATUM);
   tft.drawString(paddedLabel, x + w/2, y + h/2, 2);
 }
@@ -260,14 +379,28 @@ static void drawButtonIfChanged(int buttonId, int x, int y, int w, int h, const 
 }
 
 void draw_menu() {
-  static int lastMotor1Setpoint = -1;
-  static int lastMotor2Setpoint = -1;
+  static int lastMotor1Setpoint = -999;
+  static int lastMotor2Setpoint = -999;
   static bool lastMotor1Running = false;
   static bool lastMotor2Running = false;
   static int lastPressedButtonId = -1;
   static char lastLcdMsg[32] = "";
   static bool lastMsgVisible = false;
   static bool firstDraw = true;
+  static bool lastDarkModeState = true;
+
+  // Speed bar state tracking
+  static int lastBar1Setpoint = -999;
+  static bool lastBar1Running = false;
+  static int lastBar2Setpoint = -999;
+  static bool lastBar2Running = false;
+
+  // Force redraw if theme changes
+  bool themeChanged = (isDarkMode != lastDarkModeState);
+  if (themeChanged) {
+    firstDraw = true;
+    lastDarkModeState = isDarkMode;
+  }
 
   char localMsg[32] = "";
   uint32_t msgTime = 0;
@@ -281,43 +414,64 @@ void draw_menu() {
 
   bool isMsgVisible = (xTaskGetTickCount() * portTICK_PERIOD_MS - msgTime < 3000);
 
-  // Version header to verify this specific firmware flash is running
+  // Redraw static decorations and theme header if firstDraw or theme changes
   if (firstDraw) {
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextColor(getMutedColor(), getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v2.3", 160, 5, 1);
+    tft.drawString("MOTOR 1", 80, 5, 2);
+    tft.drawString("MOTOR 2", 240, 5, 2);
+    tft.drawFastVLine(160, 0, 160, getBorderColor());
+    tft.drawFastHLine(0, 155, 320, getBorderColor());
+    
+    tft.setTextColor(COLOR_PEACH, getBgColor());
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString("PEACH PULP v2.6", 160, 5, 1);
+    drawThemeIcon();
   }
 
   // 1. Redraw setpoints if they changed
   if (firstDraw || systemState.motor1SpeedSetpoint != lastMotor1Setpoint) {
     char buf[16];
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextColor(getTextColor(), getBgColor());
     tft.setTextDatum(MC_DATUM);
     snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor1SpeedSetpoint);
-    tft.drawString(buf, 80, 40, 2);
+    tft.drawString(buf, 80, 35, 2); // Raised slightly to fit speed bar below
     lastMotor1Setpoint = systemState.motor1SpeedSetpoint;
   }
 
   if (firstDraw || systemState.motor2SpeedSetpoint != lastMotor2Setpoint) {
     char buf[16];
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextColor(getTextColor(), getBgColor());
     tft.setTextDatum(MC_DATUM);
     snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor2SpeedSetpoint);
-    tft.drawString(buf, 240, 40, 2);
+    tft.drawString(buf, 240, 35, 2); // Raised slightly to fit speed bar below
     lastMotor2Setpoint = systemState.motor2SpeedSetpoint;
   }
 
-  // 2. Buttons M1
+  // 2. Redraw Speed Bars if setpoint or running state changed (state-aware)
+  if (firstDraw || systemState.motor1SpeedSetpoint != lastBar1Setpoint || systemState.motor1Running != lastBar1Running) {
+    drawSpeedBar(80, 48, 140, systemState.motor1SpeedSetpoint, systemState.motor1Running);
+    lastBar1Setpoint = systemState.motor1SpeedSetpoint;
+    lastBar1Running = systemState.motor1Running;
+  }
+
+  if (firstDraw || systemState.motor2SpeedSetpoint != lastBar2Setpoint || systemState.motor2Running != lastBar2Running) {
+    drawSpeedBar(240, 48, 140, systemState.motor2SpeedSetpoint, systemState.motor2Running);
+    lastBar2Setpoint = systemState.motor2SpeedSetpoint;
+    lastBar2Running = systemState.motor2Running;
+  }
+
+  // 3. Buttons M1
   drawButtonIfChanged(1, 10, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(2, 90, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(3, 10, 110, 140, 40, systemState.motor1Running ? "STOP M1" : "START M1", systemState.motor1Running, lastMotor1Running, firstDraw, pressedButtonId, lastPressedButtonId);
 
-  // 3. Buttons M2
+  // 4. Buttons M2
   drawButtonIfChanged(4, 170, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(5, 250, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(6, 170, 110, 140, 40, systemState.motor2Running ? "STOP M2" : "START M2", systemState.motor2Running, lastMotor2Running, firstDraw, pressedButtonId, lastPressedButtonId);
 
-  // 4. Global Buttons
+  // 5. Global Buttons
   drawButtonIfChanged(7, 10, 165, 145, 40, "START ALL", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(8, 165, 165, 145, 40, "STOP ALL", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
 
@@ -326,10 +480,11 @@ void draw_menu() {
   lastMotor2Running = systemState.motor2Running;
   lastPressedButtonId = pressedButtonId;
 
-  // 5. Message Banner (at bottom)
+  // 6. Message Banner (at bottom)
   if (firstDraw || isMsgVisible != lastMsgVisible || (isMsgVisible && strcmp(localMsg, lastLcdMsg) != 0)) {
+    uint16_t bg = getBgColor();
     if (isMsgVisible) {
-      tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+      tft.setTextColor(COLOR_PEACH, bg);
       tft.setTextDatum(ML_DATUM);
       char msgBuf[40];
       snprintf(msgBuf, sizeof(msgBuf), "> %-20s", localMsg);
@@ -337,7 +492,7 @@ void draw_menu() {
       strcpy(lastLcdMsg, localMsg);
     } else {
       // Clear banner if expired
-      tft.setTextColor(TFT_BLACK, TFT_BLACK);
+      tft.setTextColor(bg, bg);
       tft.setTextDatum(ML_DATUM);
       tft.drawString("                             ", 5, 227, 2);
       lastLcdMsg[0] = '\0';
