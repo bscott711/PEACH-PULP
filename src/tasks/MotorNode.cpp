@@ -26,8 +26,7 @@ MotorNode::~MotorNode() {
 void MotorNode::hwInit() {
     // Initialize hardware pins and TMC2209 driver
     pinMode(config.diagPin, INPUT_PULLDOWN);
-    config.serial->begin(115200, SERIAL_8N1, config.rxPin, config.txPin);
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
     driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
     
     // Always require re-homing on boot (clears stale NVS homing data)

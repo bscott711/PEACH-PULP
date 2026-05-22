@@ -55,61 +55,7 @@ void controller_task(void *pvParameters) {
   uint32_t lastTouchTime = 0;
 
   while (1) {
-    uint16_t t_x = 0, t_y = 0;
-    bool isTouched = getTouchInput(&t_x, &t_y);
-    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-
-    if (isTouched && !wasTouched && (now - lastTouchTime > 200)) {
-      lastTouchTime = now;
-      wasTouched = true;
-      
-      // M1 -
-      if (isPointInRect(t_x, t_y, 10, 60, 60, 40)) {
-        systemState.motor1SpeedSetpoint = std::max(0, systemState.motor1SpeedSetpoint - 10);
-        LCD_setMessage("M1 Speed -");
-      }
-      // M1 +
-      else if (isPointInRect(t_x, t_y, 90, 60, 60, 40)) {
-        systemState.motor1SpeedSetpoint = std::min(100, systemState.motor1SpeedSetpoint + 10);
-        LCD_setMessage("M1 Speed +");
-      }
-      // M1 Toggle
-      else if (isPointInRect(t_x, t_y, 10, 110, 140, 40)) {
-        systemState.motor1Running = !systemState.motor1Running;
-        LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
-      }
-      
-      // M2 -
-      else if (isPointInRect(t_x, t_y, 170, 60, 60, 40)) {
-        systemState.motor2SpeedSetpoint = std::max(0, systemState.motor2SpeedSetpoint - 10);
-        LCD_setMessage("M2 Speed -");
-      }
-      // M2 +
-      else if (isPointInRect(t_x, t_y, 250, 60, 60, 40)) {
-        systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 10);
-        LCD_setMessage("M2 Speed +");
-      }
-      // M2 Toggle
-      else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) {
-        systemState.motor2Running = !systemState.motor2Running;
-        LCD_setMessage(systemState.motor2Running ? "M2 Started" : "M2 Stopped");
-      }
-      
-      // START ALL
-      else if (isPointInRect(t_x, t_y, 10, 165, 145, 40)) {
-        systemState.motor1Running = true;
-        systemState.motor2Running = true;
-        LCD_setMessage("All Started");
-      }
-      // STOP ALL
-      else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) {
-        systemState.motor1Running = false;
-        systemState.motor2Running = false;
-        LCD_setMessage("All Stopped");
-      }
-    } else if (!isTouched) {
-      wasTouched = false;
-    }
+    // Touch processing was moved to LCD_task to prevent TFT_eSPI SPI bus corruption
     
     // Apply speed commands to motors
     int m1Target = systemState.motor1Running ? systemState.motor1SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;

@@ -13,4 +13,4 @@ void LCD_setMessage(const char *msg);
 
 void LCDInit();
 void draw_menu();
-bool getTouchInput(uint16_t *x, uint16_t *y);
+void process_touch();

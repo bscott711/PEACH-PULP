@@ -47,8 +47,69 @@ void LCD_setMessage(const char *msg) {
   }
 }
 
-bool getTouchInput(uint16_t *x, uint16_t *y) {
-  return tft.getTouch(x, y);
+bool isPointInRect(uint16_t x, uint16_t y, uint16_t rx, uint16_t ry, uint16_t rw, uint16_t rh) {
+  return (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh);
+}
+
+void process_touch() {
+  static bool wasTouched = false;
+  static uint32_t lastTouchTime = 0;
+  uint16_t t_x = 0, t_y = 0;
+  
+  bool isTouched = tft.getTouch(&t_x, &t_y);
+  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+
+  if (isTouched && !wasTouched && (now - lastTouchTime > 200)) {
+    lastTouchTime = now;
+    wasTouched = true;
+    
+    // M1 -
+    if (isPointInRect(t_x, t_y, 10, 60, 60, 40)) {
+      systemState.motor1SpeedSetpoint = std::max(0, systemState.motor1SpeedSetpoint - 10);
+      LCD_setMessage("M1 Speed -");
+    }
+    // M1 +
+    else if (isPointInRect(t_x, t_y, 90, 60, 60, 40)) {
+      systemState.motor1SpeedSetpoint = std::min(100, systemState.motor1SpeedSetpoint + 10);
+      LCD_setMessage("M1 Speed +");
+    }
+    // M1 Toggle
+    else if (isPointInRect(t_x, t_y, 10, 110, 140, 40)) {
+      systemState.motor1Running = !systemState.motor1Running;
+      LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
+    }
+    
+    // M2 -
+    else if (isPointInRect(t_x, t_y, 170, 60, 60, 40)) {
+      systemState.motor2SpeedSetpoint = std::max(0, systemState.motor2SpeedSetpoint - 10);
+      LCD_setMessage("M2 Speed -");
+    }
+    // M2 +
+    else if (isPointInRect(t_x, t_y, 250, 60, 60, 40)) {
+      systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 10);
+      LCD_setMessage("M2 Speed +");
+    }
+    // M2 Toggle
+    else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) {
+      systemState.motor2Running = !systemState.motor2Running;
+      LCD_setMessage(systemState.motor2Running ? "M2 Started" : "M2 Stopped");
+    }
+    
+    // START ALL
+    else if (isPointInRect(t_x, t_y, 10, 165, 145, 40)) {
+      systemState.motor1Running = true;
+      systemState.motor2Running = true;
+      LCD_setMessage("All Started");
+    }
+    // STOP ALL
+    else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) {
+      systemState.motor1Running = false;
+      systemState.motor2Running = false;
+      LCD_setMessage("All Stopped");
+    }
+  } else if (!isTouched) {
+    wasTouched = false;
+  }
 }
 
 // Helper to draw a button without filling to prevent flicker

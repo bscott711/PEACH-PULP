@@ -7,6 +7,7 @@ void LCD_task(void *parameter) {
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (1) {
+    process_touch(); // Process touch events safely on the LCD thread
     draw_menu(); // Draw Screen
 
     // Wait until next interval mark
