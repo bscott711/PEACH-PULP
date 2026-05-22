@@ -1,6 +1,7 @@
 CompileFlags:
   CompilationDatabase: "."
   Add:
+    - "--target=xtensa-esp32-elf"
     - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/include/c++/8.4.0"
     - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/include/c++/8.4.0/xtensa-esp32-elf"
     - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/lib/gcc/xtensa-esp32-elf/8.4.0/include"
