@@ -41,25 +41,68 @@ void LCDInit() {
 void drawOTAScreen(int percent) {
   static int lastPercent = -1;
   if (percent == lastPercent) return;
-  lastPercent = percent;
 
-  if (percent == 0) {
-      tft.fillScreen(0x10A2); // COLOR_BG
+  const uint16_t BG      = 0x10A2; // Deep dark charcoal
+  const uint16_t PEACH   = 0xFD67; // Vibrant peach/orange
+  const uint16_t MUTED   = 0x8C51; // Muted steel gray
+  const uint16_t WHITE   = 0xF7BE; // Soft white
+  const uint16_t BORDER  = 0x39E7; // Subtle border gray
+  const uint16_t BAR_BG  = 0x2104; // Dark track fill
+
+  int w  = tft.width();
+  int h  = tft.height();
+  int cx = w / 2;
+
+  // Progress bar geometry
+  const int barW = w - 60;       // 260px on a 320px screen
+  const int barH = 18;
+  const int barX = (w - barW) / 2;
+  const int barY = h * 0.60;
+
+  // --- First frame: draw the static OTA screen elements ---
+  if (lastPercent == -1 || percent == 0) {
+      tft.fillScreen(BG);
       tft.setTextDatum(MC_DATUM);
-      tft.setTextColor(0xFD67); // COLOR_PEACH
-      tft.drawString("OTA UPDATE IN PROGRESS", tft.width()/2, tft.height()*0.33, 4);
-      tft.setTextColor(0x8C51); // COLOR_TEXT_MUTED
-      tft.drawString("Receiving new firmware...", tft.width()/2, tft.height()*0.33 + 35, 2);
-  } else if (percent == 100) {
-      tft.fillScreen(0x10A2);
-      tft.setTextColor(0xFD67);
-      tft.drawString("UPDATE COMPLETE", tft.width()/2, tft.height()/2, 4);
+
+      // Title
+      tft.setTextColor(PEACH);
+      tft.drawString("OTA UPDATE", cx, h * 0.25, 4);
+
+      // Subtitle
+      tft.setTextColor(MUTED);
+      tft.drawString("Receiving new firmware...", cx, h * 0.25 + 35, 2);
+
+      // Progress bar track (rounded border + dark fill)
+      tft.drawRoundRect(barX - 2, barY - 2, barW + 4, barH + 4, 5, BORDER);
+      tft.fillRoundRect(barX, barY, barW, barH, 3, BAR_BG);
+  }
+
+  // --- Completion screen ---
+  if (percent == 100) {
+      tft.fillScreen(BG);
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextColor(PEACH);
+      tft.drawString("UPDATE COMPLETE", cx, h / 2 - 10, 4);
+      tft.setTextColor(MUTED);
+      tft.drawString("Rebooting...", cx, h / 2 + 25, 2);
+      lastPercent = percent;
       return;
   }
-  
-  tft.fillRect(0, tft.height() - 72, tft.width(), 40, 0x10A2);
-  tft.setTextColor(0xF7BE); // COLOR_TEXT_WHITE
-  tft.drawString(String(percent) + "% Completed", tft.width()/2, tft.height() - 62, 2);
+
+  // --- Update the progress bar fill ---
+  int fillW = (barW * percent) / 100;
+  if (fillW > 0) {
+      tft.fillRoundRect(barX, barY, fillW, barH, 3, PEACH);
+  }
+
+  // --- Percentage text below bar ---
+  // Clear the text area first to avoid overlapping digits
+  tft.fillRect(0, barY + barH + 6, w, 20, BG);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(WHITE, BG);
+  tft.drawString(String(percent) + "%", cx, barY + barH + 15, 2);
+
+  lastPercent = percent;
 }
 
 void LCD_setMessage(const char *msg) {
