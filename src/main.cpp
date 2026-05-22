@@ -97,30 +97,21 @@ void setup() {
     }
     ArduinoOTA.setHostname("peachpulp");
     
+volatile bool isOTA = false;
+volatile int otaProgress = 0;
+
     // Custom OTA Callbacks
-    ArduinoOTA.onStart([]() {
-      if (lcdTaskHandle != NULL) {
-        vTaskSuspend(lcdTaskHandle);
-      }
-      tft.fillScreen(COLOR_BG);
-      tft.setTextDatum(MC_DATUM);
-      tft.setTextColor(COLOR_PEACH);
-      tft.drawString("OTA UPDATE IN PROGRESS", tft.width()/2, tft.height()*0.33, 4);
-      tft.setTextColor(COLOR_TEXT_MUTED);
-      tft.drawString("Receiving new firmware...", tft.width()/2, tft.height()*0.33 + 35, 2);
+    ArduinoOTA.onStart([&]() {
+      isOTA = true;
+      otaProgress = 0;
     });
     
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-      unsigned int percent = progress / (total / 100);
-      tft.fillRect(0, tft.height() - 72, tft.width(), 40, COLOR_BG);
-      tft.setTextColor(COLOR_TEXT_WHITE);
-      tft.drawString(String(percent) + "% Completed", tft.width()/2, tft.height() - 62, 2);
+    ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
+      otaProgress = (progress / (total / 100));
     });
     
-    ArduinoOTA.onEnd([]() {
-      tft.fillScreen(COLOR_BG);
-      tft.setTextColor(COLOR_PEACH);
-      tft.drawString("UPDATE COMPLETE", tft.width()/2, tft.height()/2, 4);
+    ArduinoOTA.onEnd([&]() {
+      otaProgress = 100;
     });
     
     ArduinoOTA.begin();

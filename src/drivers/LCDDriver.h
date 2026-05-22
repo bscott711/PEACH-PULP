@@ -11,6 +11,11 @@ extern TFT_eSPI tft;
 // Helper to set a temporary message (call from any task)
 void LCD_setMessage(const char *msg);
 
+// OTA Progress globals from main.cpp
+extern volatile bool isOTA;
+extern volatile int otaProgress;
+
 void LCDInit();
+void drawOTAScreen(int percent);
 void draw_menu();
 void process_touch();

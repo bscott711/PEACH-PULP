@@ -38,6 +38,30 @@ void LCDInit() {
   tft.drawFastHLine(0, 155, 320, TFT_DARKGREY);
 }
 
+void drawOTAScreen(int percent) {
+  static int lastPercent = -1;
+  if (percent == lastPercent) return;
+  lastPercent = percent;
+
+  if (percent == 0) {
+      tft.fillScreen(0x10A2); // COLOR_BG
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextColor(0xFD67); // COLOR_PEACH
+      tft.drawString("OTA UPDATE IN PROGRESS", tft.width()/2, tft.height()*0.33, 4);
+      tft.setTextColor(0x8C51); // COLOR_TEXT_MUTED
+      tft.drawString("Receiving new firmware...", tft.width()/2, tft.height()*0.33 + 35, 2);
+  } else if (percent == 100) {
+      tft.fillScreen(0x10A2);
+      tft.setTextColor(0xFD67);
+      tft.drawString("UPDATE COMPLETE", tft.width()/2, tft.height()/2, 4);
+      return;
+  }
+  
+  tft.fillRect(0, tft.height() - 72, tft.width(), 40, 0x10A2);
+  tft.setTextColor(0xF7BE); // COLOR_TEXT_WHITE
+  tft.drawString(String(percent) + "% Completed", tft.width()/2, tft.height() - 62, 2);
+}
+
 void LCD_setMessage(const char *msg) {
   if (lcdMutex != NULL && xSemaphoreTake(lcdMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     strncpy(lcdActionMessage, msg, sizeof(lcdActionMessage) - 1);
