@@ -455,6 +455,8 @@ void draw_menu() {
 
   // Redraw static decorations and theme header if firstDraw or theme changes
   if (firstDraw) {
+    tft.fillScreen(getBgColor()); // Clear screen with active theme color on initial draw (fixes startup color inversion)
+    
     tft.setTextColor(getMutedColor(), getBgColor());
     tft.setTextDatum(TC_DATUM);
     tft.drawString("MOTOR 1", 80, 5, 2);
@@ -464,7 +466,7 @@ void draw_menu() {
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v2.8", 160, 5, 1);
+    tft.drawString("PEACH PULP v2.9", 160, 5, 1);
     drawThemeIcon();
   }
 
