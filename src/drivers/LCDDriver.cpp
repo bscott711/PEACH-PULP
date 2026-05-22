@@ -250,7 +250,6 @@ void executeButtonAction(int buttonId) {
     // Theme Toggling!
     isDarkMode = !isDarkMode;
     LCD_setMessage(isDarkMode ? "Dark Mode Active" : "Light Mode Active");
-    tft.fillScreen(getBgColor());
   }
 }
 
@@ -466,7 +465,7 @@ void draw_menu() {
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v2.9", 160, 5, 1);
+    tft.drawString("PEACH PULP v3.0", 160, 5, 1);
     drawThemeIcon();
   }
 
