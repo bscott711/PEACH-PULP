@@ -13,10 +13,7 @@ MotorNode::MotorNode(const MotorConfig& conf)
     , collisionDetected(false)
     , motorLocked(false)
     , sgThreshold(16)
-    , homingState(H_IDLE)
     , homingStartTime(0) {
-    limits[0] = 0.0f; limits[1] = 0.0f; limits[2] = 0.0f;
-    limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
 
 MotorNode::~MotorNode() {
@@ -32,24 +29,6 @@ void MotorNode::hwInit() {
     // Always require re-homing on boot (clears stale NVS homing data)
     isHomed = false;
     currentPosition = 0.0f;
-    
-    // Open NVS namespace for limit storage
-    if (!preferences.begin(config.nvsNamespace, false)) {
-        ESP_LOGE(TAG, "Failed to open NVS namespace");
-    } else {
-        // Load limit data from NVS
-        limits[0] = preferences.getFloat("limB", 0.0f);
-        limits[1] = preferences.getFloat("limM", 0.0f);
-        limits[2] = preferences.getFloat("limT", 0.0f);
-        limitSet[0] = preferences.getBool("limS_B", false);
-        limitSet[1] = preferences.getBool("limS_M", false);
-        limitSet[2] = preferences.getBool("limS_T", false);
-        
-        ESP_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
-                 limits[0], limitSet[0] ? "Y" : "N",
-                 limits[1], limitSet[1] ? "Y" : "N",
-                 limits[2], limitSet[2] ? "Y" : "N");
-    }
 }
 
 void MotorNode::processCommand(const MotorCommand& cmd) {
@@ -65,39 +44,6 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
                 isHoming = true;
                 ESP_LOGI(TAG, "Homing sequence initiated");
             }
-            break;
-            
-        case MotorCmdAction::SET_LIMIT_BOT:
-            limits[0] = cmd.value;
-            limitSet[0] = true;
-            ESP_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
-            break;
-            
-        case MotorCmdAction::SET_LIMIT_MID:
-            limits[1] = cmd.value;
-            limitSet[1] = true;
-            ESP_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
-            break;
-            
-        case MotorCmdAction::SET_LIMIT_TOP:
-            limits[2] = cmd.value;
-            limitSet[2] = true;
-            ESP_LOGI(TAG, "Top limit set to %.2f", limits[2]);
-            break;
-            
-        case MotorCmdAction::CLEAR_LIMIT_BOT:
-            limitSet[0] = false;
-            ESP_LOGI(TAG, "Bottom limit cleared");
-            break;
-            
-        case MotorCmdAction::CLEAR_LIMIT_MID:
-            limitSet[1] = false;
-            ESP_LOGI(TAG, "Middle limit cleared");
-            break;
-            
-        case MotorCmdAction::CLEAR_LIMIT_TOP:
-            limitSet[2] = false;
-            ESP_LOGI(TAG, "Top limit cleared");
             break;
             
         case MotorCmdAction::SET_SG_THRESHOLD:
@@ -185,33 +131,6 @@ void MotorNode::hwUpdate() {
         float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
         currentPosition += deltaPos;
         
-        // Calculate effective bottom limit
-        bool effectiveBotSet = limitSet[0];
-        float effectiveLimBot = limits[0];
-        
-        // Bottom limit check with deceleration zone
-        if (effectiveBotSet && targetSpeed < 0) {
-            float distToBot = currentPosition - effectiveLimBot;
-            if (distToBot <= 0.0f) {
-                targetSpeed = 0;
-                LCD_setMessage("Bottom Reached");
-            } else if (distToBot < 5.0f) {
-                // Deceleration zone: taper speed linearly
-                int minSpeed = 1000;
-                int maxSpeed = abs(targetSpeed);
-                if (maxSpeed > minSpeed) {
-                    int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f));
-                    targetSpeed = -scaledSpeed;
-                }
-            }
-        }
-        
-        // Top limit check
-        if (limitSet[2] && currentPosition >= limits[2] && targetSpeed > 0) {
-            targetSpeed = 0;
-            LCD_setMessage("Top Reached");
-        }
-        
         // Home position hard stop
         if (isHomed && currentPosition <= 0.0f && targetSpeed < 0) {
             targetSpeed = 0;
@@ -241,12 +160,6 @@ MotorTelemetry MotorNode::generateTelemetry() {
     tel.targetSpeed = targetSpeed;
     tel.isHomed = isHomed;
     tel.isHoming = isHoming;
-    tel.limits[0] = limits[0];
-    tel.limits[1] = limits[1];
-    tel.limits[2] = limits[2];
-    tel.limitSet[0] = limitSet[0];
-    tel.limitSet[1] = limitSet[1];
-    tel.limitSet[2] = limitSet[2];
     tel.sgThreshold = sgThreshold;
     tel.collisionDetected = collisionDetected || motorLocked;
     return tel;
@@ -264,99 +177,6 @@ bool MotorNode::startHoming() {
     cmd.action = MotorCmdAction::START_HOMING;
     cmd.value = 0;
     return sendCommand(cmd);
-}
-
-bool MotorNode::setLimitBot(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_BOT;
-    cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putFloat("limB", limits[0]);
-        preferences.putBool("limS_B", limitSet[0]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved bottom limit to NVS: %.2f", limits[0]);
-    }
-    
-    return result;
-}
-
-bool MotorNode::setLimitMid(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_MID;
-    cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putFloat("limM", limits[1]);
-        preferences.putBool("limS_M", limitSet[1]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved middle limit to NVS: %.2f", limits[1]);
-    }
-    
-    return result;
-}
-
-bool MotorNode::setLimitTop(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_TOP;
-    cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putFloat("limT", limits[2]);
-        preferences.putBool("limS_T", limitSet[2]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved top limit to NVS: %.2f", limits[2]);
-    }
-    
-    return result;
-}
-
-bool MotorNode::clearLimitBot() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_BOT;
-    cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putBool("limS_B", false);
-        preferences.end();
-        ESP_LOGI(TAG, "Cleared bottom limit in NVS");
-    }
-    
-    return result;
-}
-
-bool MotorNode::clearLimitMid() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_MID;
-    cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putBool("limS_M", false);
-        preferences.end();
-        ESP_LOGI(TAG, "Cleared middle limit in NVS");
-    }
-    
-    return result;
-}
-
-bool MotorNode::clearLimitTop() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_TOP;
-    cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin(config.nvsNamespace, false)) {
-        preferences.putBool("limS_T", false);
-        preferences.end();
-        ESP_LOGI(TAG, "Cleared top limit in NVS");
-    }
-    
-    return result;
 }
 
 bool MotorNode::setSGThreshold(int threshold) {

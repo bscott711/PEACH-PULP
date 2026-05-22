@@ -27,6 +27,8 @@ void fadeBacklightTo(int targetBrightness, int durationMs);
 void drawSplashScreen();
 void updateBootProgress(int percent, String message);
 
+extern TaskHandle_t lcdTaskHandle;
+
 // Shared UART pins for TMC2209 (Changed to avoid CYD Touch CS conflict on GPIO 33)
 #define UART_RX 22
 #define UART_TX 27
@@ -97,6 +99,9 @@ void setup() {
     
     // Custom OTA Callbacks
     ArduinoOTA.onStart([]() {
+      if (lcdTaskHandle != NULL) {
+        vTaskSuspend(lcdTaskHandle);
+      }
       tft.fillScreen(COLOR_BG);
       tft.setTextDatum(MC_DATUM);
       tft.setTextColor(COLOR_PEACH);
@@ -137,20 +142,20 @@ void setup() {
   vTaskPrioritySet(NULL, 5);
 
   // 1. Start Active Motion Nodes
-  if (!g_motor1Node.start("Motor1Node", 4096, 2))
-    ESP_LOGE("MAIN", "Failed Motor1Node");
-  if (!g_motor2Node.start("Motor2Node", 4096, 2))
-    ESP_LOGE("MAIN", "Failed Motor2Node");
+  // if (!g_motor1Node.start("Motor1Node", 4096, 2))
+  //   ESP_LOGE("MAIN", "Failed Motor1Node");
+  // if (!g_motor2Node.start("Motor2Node", 4096, 2))
+  //   ESP_LOGE("MAIN", "Failed Motor2Node");
 
   // 2. Link the global messaging queues
-  motor1CmdQueue = g_motor1Node.getCmdQueue();
-  motor1TelQueue = g_motor1Node.getTelQueue();
-  motor2CmdQueue = g_motor2Node.getCmdQueue();
-  motor2TelQueue = g_motor2Node.getTelQueue();
+  // motor1CmdQueue = g_motor1Node.getCmdQueue();
+  // motor1TelQueue = g_motor1Node.getTelQueue();
+  // motor2CmdQueue = g_motor2Node.getCmdQueue();
+  // motor2TelQueue = g_motor2Node.getTelQueue();
 
   // 3. Create Dependent Tasks
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
-  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, NULL);
+  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, &lcdTaskHandle);
 
   // Restore setup() to Priority 1
   vTaskPrioritySet(NULL, 1);

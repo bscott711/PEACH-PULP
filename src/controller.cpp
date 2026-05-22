@@ -59,8 +59,8 @@ void controller_task(void *pvParameters) {
     int m1Target = systemState.motor1Running ? systemState.motor1SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
     int m2Target = systemState.motor2Running ? systemState.motor2SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
     
-    g_motor1Node.setSpeed(m1Target);
-    g_motor2Node.setSpeed(m2Target);
+    // g_motor1Node.setSpeed(m1Target);
+    // g_motor2Node.setSpeed(m2Target);
 
     vTaskDelayUntil(&lastWakeTime, CONTROLLER_INTERVAL);
   }

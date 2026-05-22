@@ -39,10 +39,6 @@ private:
     // StallGuard threshold
     int sgThreshold;
     
-    // Limit positions (NVS persisted)
-    float limits[3];     // [0]=Bot, [1]=Mid, [2]=Top
-    bool limitSet[3];    // Whether each limit is configured
-    
     // NVS storage
     Preferences preferences;
     
@@ -64,12 +60,6 @@ public:
     // Convenience methods for sending commands
     bool setSpeed(int speed);
     bool startHoming();
-    bool setLimitBot(float position);
-    bool setLimitMid(float position);
-    bool setLimitTop(float position);
-    bool clearLimitBot();
-    bool clearLimitMid();
-    bool clearLimitTop();
     bool setSGThreshold(int threshold);
     
     // Getters for state
