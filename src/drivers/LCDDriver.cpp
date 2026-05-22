@@ -18,24 +18,9 @@ void LCDInit() {
   tft.begin();
   tft.setRotation(3); // 320x240 landscape (flipped)
   
-  // Basic touch calibration if missing
-  uint16_t calData[5];
-  Preferences prefs;
-  prefs.begin("peach_touch", false);
-  if (prefs.getBytesLength("calData") == sizeof(calData)) {
-    prefs.getBytes("calData", calData, sizeof(calData));
-    tft.setTouch(calData);
-  } else {
-    // Run calibration
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextSize(2);
-    tft.setCursor(10, 10);
-    tft.println("Touch corners to calibrate");
-    tft.calibrateTouch(calData, TFT_WHITE, TFT_BLACK, 15);
-    prefs.putBytes("calData", calData, sizeof(calData));
-  }
-  prefs.end();
+  // Apply standard touch calibration values to bypass the manual setup screen
+  uint16_t calData[5] = {300, 3600, 300, 3600, 1};
+  tft.setTouch(calData);
 
   tft.fillScreen(TFT_BLACK);
   

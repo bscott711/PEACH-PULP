@@ -7,8 +7,25 @@
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 
+#define TFT_BL 21
+#define BACKLIGHT_CHANNEL 0
+
+// Premium Theme Colors (RGB565)
+const uint16_t COLOR_BG = 0x10A2;          // Deep dark charcoal (16, 16, 20)
+const uint16_t COLOR_PEACH = 0xFD67;       // Vibrant peach/orange (255, 110, 60)
+const uint16_t COLOR_PEACH_LIGHT = 0xFEB2; // Soft peach highlight (255, 150, 100)
+const uint16_t COLOR_TEXT_MUTED = 0x8C51;  // Muted steel gray (140, 140, 145)
+const uint16_t COLOR_TEXT_WHITE = 0xF7BE;  // Soft white (245, 245, 250)
+const uint16_t COLOR_BORDER = 0x39E7;      // Subtle border gray (56, 56, 60)
+
 const char *ssid = "sdsmtopn";
 const char *password = "";
+
+// Boot UI Helpers (forward declarations)
+void initBacklight();
+void fadeBacklightTo(int targetBrightness, int durationMs);
+void drawSplashScreen();
+void updateBootProgress(int percent, String message);
 
 // Shared UART pins for TMC2209 (Changed to avoid CYD Touch CS conflict on GPIO 33)
 #define UART_RX 22
@@ -49,25 +66,66 @@ void setup() {
   // Initialize System State from NVS
   initSystemState();
 
+  // Inits
+  LCDInit();
+  initBacklight();
+  drawSplashScreen();
+  fadeBacklightTo(255, 800);
+
+  updateBootProgress(10, "Connecting to WiFi...");
+  
   // Initialize WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   
   // Wait a bit for WiFi
   for(int i=0; i<15 && WiFi.status() != WL_CONNECTED; i++) {
+    updateBootProgress(10 + (i * 3), "Waiting for WiFi...");
     vTaskDelay(pdMS_TO_TICKS(500));
   }
   
   if (WiFi.status() == WL_CONNECTED) {
+    updateBootProgress(60, "WiFi Connected!");
     if (MDNS.begin("peachpulp")) {
       ESP_LOGI("MAIN", "mDNS responder started: peachpulp.local");
+      updateBootProgress(70, "mDNS Active");
     }
     ArduinoOTA.setHostname("peachpulp");
+    
+    // Custom OTA Callbacks
+    ArduinoOTA.onStart([]() {
+      tft.fillScreen(COLOR_BG);
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextColor(COLOR_PEACH);
+      tft.drawString("OTA UPDATE IN PROGRESS", tft.width()/2, tft.height()*0.33, 4);
+      tft.setTextColor(COLOR_TEXT_MUTED);
+      tft.drawString("Receiving new firmware...", tft.width()/2, tft.height()*0.33 + 35, 2);
+    });
+    
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      unsigned int percent = progress / (total / 100);
+      tft.fillRect(0, tft.height() - 72, tft.width(), 40, COLOR_BG);
+      tft.setTextColor(COLOR_TEXT_WHITE);
+      tft.drawString(String(percent) + "% Completed", tft.width()/2, tft.height() - 62, 2);
+    });
+    
+    ArduinoOTA.onEnd([]() {
+      tft.fillScreen(COLOR_BG);
+      tft.setTextColor(COLOR_PEACH);
+      tft.drawString("UPDATE COMPLETE", tft.width()/2, tft.height()/2, 4);
+    });
+    
     ArduinoOTA.begin();
+    updateBootProgress(90, "OTA Listener Ready");
+  } else {
+    updateBootProgress(60, "WiFi Failed. Offline.");
   }
-
-  // Inits
-  LCDInit();
+  
+  updateBootProgress(100, "System Starting...");
+  vTaskDelay(pdMS_TO_TICKS(500));
+  
+  // Clear screen before launching LCD Task UI
+  tft.fillScreen(TFT_BLACK);
 
   // Task Update Intervals
   static int lcd_interval = TASK_REFRESH_LCD;
@@ -98,4 +156,73 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
   vTaskDelay(pdMS_TO_TICKS(50));
+}
+
+// --- Boot UI Helper Implementations ---
+
+void initBacklight() {
+  ledcSetup(BACKLIGHT_CHANNEL, 5000, 8);
+  ledcAttachPin(TFT_BL, BACKLIGHT_CHANNEL);
+  ledcWrite(BACKLIGHT_CHANNEL, 0); 
+}
+
+void fadeBacklightTo(int targetBrightness, int durationMs) {
+  int steps = 30;
+  int stepDelay = durationMs / steps;
+  for (int i = 0; i <= steps; i++) {
+    int val = (targetBrightness * i) / steps;
+    ledcWrite(BACKLIGHT_CHANNEL, val);
+    vTaskDelay(pdMS_TO_TICKS(stepDelay));
+  }
+}
+
+void drawSplashScreen() {
+  tft.fillScreen(COLOR_BG);
+  int w = tft.width();
+  int h = tft.height();
+  int cx = w / 2;
+  int cy = h * 0.33;
+
+  tft.drawCircle(cx, cy, 32, COLOR_PEACH);
+  tft.drawCircle(cx, cy, 33, COLOR_PEACH); 
+  tft.fillCircle(cx, cy, 24, COLOR_PEACH_LIGHT); 
+  tft.fillCircle(cx + 12, cy, 14, COLOR_BG); 
+
+  int textY = cy + 55;
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(0x1842); 
+  tft.drawString("PEACH PULP", cx + 2, textY + 2, 4);
+  tft.setTextColor(COLOR_PEACH); 
+  tft.drawString("PEACH PULP", cx, textY, 4);
+
+  int subY = textY + 25;
+  tft.setTextColor(COLOR_TEXT_MUTED);
+  tft.drawString("SYSTEM BOOTING", cx, subY, 2);
+
+  int barMaxWidth = (w > 240) ? 224 : 180;
+  int barX = (w - barMaxWidth) / 2;
+  int barY = h - 35;
+  tft.drawRoundRect(barX - 2, barY - 2, barMaxWidth + 4, 12, 4, COLOR_BORDER);
+}
+
+void updateBootProgress(int percent, String message) {
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+
+  int w = tft.width();
+  int h = tft.height();
+  int cx = w / 2;
+  int barY = h - 35;
+
+  tft.fillRect(10, barY - 25, w - 20, 18, COLOR_BG);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(COLOR_TEXT_WHITE, COLOR_BG);
+  tft.drawString(message, cx, barY - 15, 1);
+
+  int barMaxWidth = (w > 240) ? 224 : 180;
+  int barX = (w - barMaxWidth) / 2;
+  int barWidth = (barMaxWidth * percent) / 100;
+  if (barWidth > 0) {
+    tft.fillRoundRect(barX, barY, barWidth, 8, 3, COLOR_PEACH);
+  }
 }
