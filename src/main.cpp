@@ -11,9 +11,8 @@
 
 // Display Rotation Config:
 // 0 = Portrait (Standard vertical), 1 = Landscape (CW), 2 = Portrait (180 deg), 3 = Landscape (CCW)
-// Changed to 0 to enable native Portrait mode for the vertical enclosure window!
-// (If it is upside down, simply change this value to 2!)
-#define DISPLAY_ROTATION 0
+// Setting to 3 (which is 90 degrees CCW from 0) to align with your portrait enclosure.
+#define DISPLAY_ROTATION 3
 
 // Initialize TFT
 TFT_eSPI tft = TFT_eSPI();
