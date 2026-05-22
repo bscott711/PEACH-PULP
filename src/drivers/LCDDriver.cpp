@@ -141,7 +141,6 @@ void process_touch() {
   bool isTouched = touchscreen.touched();
   uint16_t raw_x = 0, raw_y = 0;
   
-  char dbg[40];
   if (isTouched) {
     TS_Point p = touchscreen.getPoint();
     raw_x = p.x;
@@ -154,21 +153,6 @@ void process_touch() {
     // Clamp to screen boundaries
     t_x = std::max((uint16_t)0, std::min((uint16_t)320, t_x));
     t_y = std::max((uint16_t)0, std::min((uint16_t)240, t_y));
-    
-    snprintf(dbg, sizeof(dbg), "RAW:%4d,%4d ", raw_x, raw_y);
-  } else {
-    snprintf(dbg, sizeof(dbg), "RAW: none     ");
-  }
-  
-  tft.setTextDatum(TL_DATUM);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.drawString(dbg, 0, 228, 1);
-
-  if (isTouched) {
-    snprintf(dbg, sizeof(dbg), "MAP:%3d,%3d ", t_x, t_y);
-    tft.drawString(dbg, 180, 228, 1);
-  } else {
-    tft.drawString("MAP: none     ", 180, 228, 1);
   }
 
   uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
@@ -267,7 +251,24 @@ void drawButton(int x, int y, int w, int h, const char* label, bool isActive, bo
   tft.drawString(paddedLabel, x + w/2, y + h/2, 2);
 }
 
+static void drawButtonIfChanged(int buttonId, int x, int y, int w, int h, const char* label, bool isActive, bool lastActive, bool firstDraw, int pressedButtonId, int lastPressedButtonId) {
+  bool currentPressed = (pressedButtonId == buttonId);
+  bool lastPressed = (lastPressedButtonId == buttonId);
+  if (firstDraw || currentPressed != lastPressed || isActive != lastActive) {
+    drawButton(x, y, w, h, label, isActive, currentPressed);
+  }
+}
+
 void draw_menu() {
+  static int lastMotor1Setpoint = -1;
+  static int lastMotor2Setpoint = -1;
+  static bool lastMotor1Running = false;
+  static bool lastMotor2Running = false;
+  static int lastPressedButtonId = -1;
+  static char lastLcdMsg[32] = "";
+  static bool lastMsgVisible = false;
+  static bool firstDraw = true;
+
   char localMsg[32] = "";
   uint32_t msgTime = 0;
   
@@ -278,45 +279,71 @@ void draw_menu() {
     xSemaphoreGive(lcdMutex);
   }
 
+  bool isMsgVisible = (xTaskGetTickCount() * portTICK_PERIOD_MS - msgTime < 3000);
+
   // Version header to verify this specific firmware flash is running
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setTextDatum(TC_DATUM);
-  tft.drawString("v2.2-DedicatedSPI", 160, 5, 1);
-  
-  // Draw Setpoints
-  char buf[16];
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  
-  snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor1SpeedSetpoint);
-  tft.drawString(buf, 80, 40, 2);
-  
-  snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor2SpeedSetpoint);
-  tft.drawString(buf, 240, 40, 2);
-
-  // Buttons M1
-  drawButton(10, 60, 60, 40, "-", false, pressedButtonId == 1);
-  drawButton(90, 60, 60, 40, "+", false, pressedButtonId == 2);
-  drawButton(10, 110, 140, 40, systemState.motor1Running ? "STOP M1" : "START M1", systemState.motor1Running, pressedButtonId == 3);
-
-  // Buttons M2
-  drawButton(170, 60, 60, 40, "-", false, pressedButtonId == 4);
-  drawButton(250, 60, 60, 40, "+", false, pressedButtonId == 5);
-  drawButton(170, 110, 140, 40, systemState.motor2Running ? "STOP M2" : "START M2", systemState.motor2Running, pressedButtonId == 6);
-
-  // Global Buttons
-  drawButton(10, 165, 145, 40, "START ALL", false, pressedButtonId == 7);
-  drawButton(165, 165, 145, 40, "STOP ALL", false, pressedButtonId == 8);
-  
-  // Message Banner (at bottom)
-  if (xTaskGetTickCount() * portTICK_PERIOD_MS - msgTime < 3000) {
+  if (firstDraw) {
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setTextDatum(ML_DATUM);
-    char msgBuf[40];
-    snprintf(msgBuf, sizeof(msgBuf), "> %-20s", localMsg);
-    tft.drawString(msgBuf, 5, 227, 2);
-  } else {
-    // Clear banner if expired
-    tft.drawString("                      ", 5, 227, 2);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString("PEACH PULP v2.3", 160, 5, 1);
   }
+
+  // 1. Redraw setpoints if they changed
+  if (firstDraw || systemState.motor1SpeedSetpoint != lastMotor1Setpoint) {
+    char buf[16];
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor1SpeedSetpoint);
+    tft.drawString(buf, 80, 40, 2);
+    lastMotor1Setpoint = systemState.motor1SpeedSetpoint;
+  }
+
+  if (firstDraw || systemState.motor2SpeedSetpoint != lastMotor2Setpoint) {
+    char buf[16];
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    snprintf(buf, sizeof(buf), "SPD: %-4d", systemState.motor2SpeedSetpoint);
+    tft.drawString(buf, 240, 40, 2);
+    lastMotor2Setpoint = systemState.motor2SpeedSetpoint;
+  }
+
+  // 2. Buttons M1
+  drawButtonIfChanged(1, 10, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(2, 90, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(3, 10, 110, 140, 40, systemState.motor1Running ? "STOP M1" : "START M1", systemState.motor1Running, lastMotor1Running, firstDraw, pressedButtonId, lastPressedButtonId);
+
+  // 3. Buttons M2
+  drawButtonIfChanged(4, 170, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(5, 250, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(6, 170, 110, 140, 40, systemState.motor2Running ? "STOP M2" : "START M2", systemState.motor2Running, lastMotor2Running, firstDraw, pressedButtonId, lastPressedButtonId);
+
+  // 4. Global Buttons
+  drawButtonIfChanged(7, 10, 165, 145, 40, "START ALL", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(8, 165, 165, 145, 40, "STOP ALL", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+
+  // Update cached states
+  lastMotor1Running = systemState.motor1Running;
+  lastMotor2Running = systemState.motor2Running;
+  lastPressedButtonId = pressedButtonId;
+
+  // 5. Message Banner (at bottom)
+  if (firstDraw || isMsgVisible != lastMsgVisible || (isMsgVisible && strcmp(localMsg, lastLcdMsg) != 0)) {
+    if (isMsgVisible) {
+      tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+      tft.setTextDatum(ML_DATUM);
+      char msgBuf[40];
+      snprintf(msgBuf, sizeof(msgBuf), "> %-20s", localMsg);
+      tft.drawString(msgBuf, 5, 227, 2);
+      strcpy(lastLcdMsg, localMsg);
+    } else {
+      // Clear banner if expired
+      tft.setTextColor(TFT_BLACK, TFT_BLACK);
+      tft.setTextDatum(ML_DATUM);
+      tft.drawString("                             ", 5, 227, 2);
+      lastLcdMsg[0] = '\0';
+    }
+    lastMsgVisible = isMsgVisible;
+  }
+
+  firstDraw = false;
 }
