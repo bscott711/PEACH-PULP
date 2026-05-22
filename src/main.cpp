@@ -11,12 +11,12 @@
 #define BACKLIGHT_CHANNEL 0
 
 // Premium Theme Colors (RGB565)
-const uint16_t COLOR_BG = 0x10A2;          // Deep dark charcoal (16, 16, 20)
+const uint16_t COLOR_BG = 0xF7BE;          // Deep dark charcoal under inversion
 const uint16_t COLOR_PEACH = 0xFD67;       // Vibrant peach/orange (255, 110, 60)
 const uint16_t COLOR_PEACH_LIGHT = 0xFEB2; // Soft peach highlight (255, 150, 100)
-const uint16_t COLOR_TEXT_MUTED = 0x8C51;  // Muted steel gray (140, 140, 145)
-const uint16_t COLOR_TEXT_WHITE = 0xF7BE;  // Soft white (245, 245, 250)
-const uint16_t COLOR_BORDER = 0x39E7;      // Subtle border gray (56, 56, 60)
+const uint16_t COLOR_TEXT_MUTED = 0x632C;  // Muted steel gray under inversion
+const uint16_t COLOR_TEXT_WHITE = 0x18C3;  // Soft white under inversion
+const uint16_t COLOR_BORDER = 0xC618;      // Subtle border gray under inversion
 
 const char *ssid = "sdsmtopn";
 const char *password = "";
@@ -124,7 +124,7 @@ void setup() {
   vTaskDelay(pdMS_TO_TICKS(500));
   
   // Clear screen before launching LCD Task UI
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(COLOR_BG);
 
   // Task Update Intervals
   static int lcd_interval = TASK_REFRESH_LCD;
@@ -189,7 +189,7 @@ void drawSplashScreen() {
 
   int textY = cy + 55;
   tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(0x1842); 
+  tft.setTextColor(0xFFFF); 
   tft.drawString("PEACH PULP", cx + 2, textY + 2, 4);
   tft.setTextColor(COLOR_PEACH); 
   tft.drawString("PEACH PULP", cx, textY, 4);

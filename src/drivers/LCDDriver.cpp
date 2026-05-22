@@ -34,49 +34,25 @@ static char lcdActionMessage[32] = "System Initialized";
 static SemaphoreHandle_t lcdMutex = NULL;
 static uint32_t lcdMessageTimestamp = 0;
 
-static bool isDarkMode = true;
-
-// Get current theme colors based on the active mode (Inverted to correct for TFT_INVERSION_ON)
+// Permanent premium dark mode colors (values are bitwise inverted for hardware TFT_INVERSION_ON)
 uint16_t getBgColor() {
-  return isDarkMode ? 0xF7BE : TFT_BLACK; // Swapped to account for TFT inversion (0xF7BE displays as deep dark)
+  return 0xF7BE; // Renders as deep dark charcoal/black
 }
 
 uint16_t getTextColor() {
-  return isDarkMode ? 0x18C3 : COLOR_WHITE; // Swapped (0x18C3 displays as crisp soft white)
+  return 0x18C3; // Renders as crisp soft white
 }
 
 uint16_t getMutedColor() {
-  return isDarkMode ? 0x632C : COLOR_MUTED; // Swapped
+  return 0x632C; // Renders as muted steel gray
 }
 
 uint16_t getBorderColor() {
-  return isDarkMode ? 0xC618 : COLOR_BORDER; // Swapped
+  return 0xC618; // Renders as subtle border gray
 }
 
-// Draw a crescent moon (Dark Mode) or Sun (Light Mode) in the top-right corner
-void drawThemeIcon() {
-  int cx = 302;
-  int cy = 12;
-  uint16_t bg = getBgColor();
-  
-  tft.fillRect(290, 0, 30, 25, bg); // Clear previous icon
-  
-  if (isDarkMode) {
-    // Crescent Moon
-    int r = 7;
-    tft.fillCircle(cx, cy, r, COLOR_GOLD);
-    tft.fillCircle(cx - 3, cy - 2, r, bg); // Offset overlay with background
-  } else {
-    // Golden Sun
-    int r = 4;
-    tft.fillCircle(cx, cy, r, COLOR_GOLD);
-    tft.drawFastVLine(cx, cy - 7, 15, COLOR_GOLD);
-    tft.drawFastHLine(cx - 7, cy, 15, COLOR_GOLD);
-    tft.drawLine(cx - 4, cy - 4, cx + 4, cy + 4, COLOR_GOLD);
-    tft.drawLine(cx - 4, cy + 4, cx + 4, cy - 4, COLOR_GOLD);
-    tft.fillCircle(cx, cy, r - 1, COLOR_GOLD);
-  }
-}
+// Theme icon removed as we default exclusively to premium dark mode
+void drawThemeIcon() {}
 
 // Draw a premium speed bar centered on zero
 void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
@@ -132,12 +108,12 @@ void drawOTAScreen(int percent) {
   static int lastPercent = -1;
   if (percent == lastPercent) return;
 
-  const uint16_t BG      = 0x10A2; // Deep dark charcoal
-  const uint16_t PEACH   = 0xFD67; // Vibrant peach/orange
-  const uint16_t MUTED   = 0x8C51; // Muted steel gray
-  const uint16_t WHITE   = 0xF7BE; // Soft white
-  const uint16_t BORDER  = 0x39E7; // Subtle border gray
-  const uint16_t BAR_BG  = 0x2104; // Dark track fill
+  const uint16_t BG      = getBgColor();      // Deep dark charcoal
+  const uint16_t PEACH   = COLOR_PEACH;       // Vibrant peach/orange
+  const uint16_t MUTED   = getMutedColor();   // Muted steel gray
+  const uint16_t WHITE   = getTextColor();    // Crisp soft white
+  const uint16_t BORDER  = getBorderColor();  // Subtle border gray
+  const uint16_t BAR_BG  = getBorderColor();  // Dark track background
 
   int w  = tft.width();
   int h  = tft.height();
@@ -246,11 +222,7 @@ void executeButtonAction(int buttonId) {
     systemState.motor2Running = false;
     LCD_setMessage("All Stopped");
   }
-  else if (buttonId == 9) {
-    // Theme Toggling!
-    isDarkMode = !isDarkMode;
-    LCD_setMessage(isDarkMode ? "Dark Mode Active" : "Light Mode Active");
-  }
+  // Theme Toggling removed
 }
 
 void handleSliderTouch(int sliderId, int t_x) {
@@ -318,7 +290,6 @@ void process_touch() {
       else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
       else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
       else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
-      else if (isPointInRect(t_x, t_y, 280, 0, 40, 24))    currentButtonId = 9; // Crescent Moon Theme Switch! (Strictly y < 25, x >= 280 to prevent slider overlap)
       else if (isPointInRect(t_x, t_y, 10, 25, 140, 33))   currentButtonId = 10; // M1 Slider (y = 25 to 58)
       else if (isPointInRect(t_x, t_y, 170, 25, 140, 33))  currentButtonId = 11; // M2 Slider (y = 25 to 58)
     }
@@ -387,7 +358,7 @@ void drawButton(int x, int y, int w, int h, const char* label, bool isActive, bo
   } else if (isActive) {
     // Button is active (e.g. Stop button when running): draw in vibrant mint green
     borderColor = COLOR_MINT;
-    fillColor = isDarkMode ? 0xEE7D : 0x0A24; // Swapped to account for TFT inversion
+    fillColor = 0xEE7D; // Swapped to account for TFT inversion
     textColor = COLOR_MINT;
   } else {
     // Default inactive button
@@ -425,20 +396,12 @@ void draw_menu() {
   static char lastLcdMsg[32] = "";
   static bool lastMsgVisible = false;
   static bool firstDraw = true;
-  static bool lastDarkModeState = true;
 
   // Speed bar state tracking
   static int lastBar1Setpoint = -999;
   static bool lastBar1Running = false;
   static int lastBar2Setpoint = -999;
   static bool lastBar2Running = false;
-
-  // Force redraw if theme changes
-  bool themeChanged = (isDarkMode != lastDarkModeState);
-  if (themeChanged) {
-    firstDraw = true;
-    lastDarkModeState = isDarkMode;
-  }
 
   char localMsg[32] = "";
   uint32_t msgTime = 0;
@@ -465,8 +428,7 @@ void draw_menu() {
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v3.0", 160, 5, 1);
-    drawThemeIcon();
+    tft.drawString("PEACH PULP v3.1", 160, 5, 1);
   }
 
   // 1. Redraw setpoints if they changed
