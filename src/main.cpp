@@ -4,6 +4,7 @@
 #include "tasks/MotorNode.h"
 #include "drivers/LCDDriver.h"
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 
@@ -18,8 +19,7 @@ const uint16_t COLOR_TEXT_MUTED = 0x632C;  // Muted steel gray under inversion
 const uint16_t COLOR_TEXT_WHITE = 0x18C3;  // Soft white under inversion
 const uint16_t COLOR_BORDER = 0xC618;      // Subtle border gray under inversion
 
-const char *ssid = "sdsmtopn";
-const char *password = "";
+WiFiMulti wifiMulti;
 
 // Boot UI Helpers (forward declarations)
 void initBacklight();
@@ -82,12 +82,13 @@ void setup() {
 
   updateBootProgress(10, "Connecting to WiFi...");
   
-  // Initialize WiFi
+  // Configure WiFi STA and register multiple known APs
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  wifiMulti.addAP("sdsmtopn", "");
+  wifiMulti.addAP("TheChaosCapital", "bccbtscott");
   
-  // Wait a bit for WiFi
-  for(int i=0; i<15 && WiFi.status() != WL_CONNECTED; i++) {
+  // Wait a bit for WiFi connection
+  for(int i=0; i<15 && wifiMulti.run() != WL_CONNECTED; i++) {
     updateBootProgress(10 + (i * 3), "Waiting for WiFi...");
     vTaskDelay(pdMS_TO_TICKS(500));
   }
@@ -154,6 +155,15 @@ void setup() {
 
 void loop() {
   ArduinoOTA.handle();
+  
+  // Maintain WiFi connection and handle automatic reconnection/switching
+  static uint32_t lastWiFiCheck = 0;
+  uint32_t now = millis();
+  if (now - lastWiFiCheck > 5000) {
+    wifiMulti.run();
+    lastWiFiCheck = now;
+  }
+  
   vTaskDelay(pdMS_TO_TICKS(50));
 }
 
