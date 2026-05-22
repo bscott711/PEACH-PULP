@@ -319,7 +319,7 @@ void process_touch() {
       else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
       else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
       else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
-      else if (isPointInRect(t_x, t_y, 270, 0, 50, 55))    currentButtonId = 9; // Crescent Moon Theme Switch! (Enlarged target)
+      else if (isPointInRect(t_x, t_y, 280, 0, 40, 24))    currentButtonId = 9; // Crescent Moon Theme Switch! (Strictly y < 25, x >= 280 to prevent slider overlap)
       else if (isPointInRect(t_x, t_y, 10, 25, 140, 33))   currentButtonId = 10; // M1 Slider (y = 25 to 58)
       else if (isPointInRect(t_x, t_y, 170, 25, 140, 33))  currentButtonId = 11; // M2 Slider (y = 25 to 58)
     }
@@ -464,7 +464,7 @@ void draw_menu() {
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v2.7", 160, 5, 1);
+    tft.drawString("PEACH PULP v2.8", 160, 5, 1);
     drawThemeIcon();
   }
 
