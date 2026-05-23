@@ -23,6 +23,10 @@ MotorNode::~MotorNode() {
 void MotorNode::hwInit() {
     vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
     
+    // Force a clean termination of the serial port before re-opening to bypass the library ESP32 end() bug!
+    config.serial->end();
+    vTaskDelay(pdMS_TO_TICKS(15));
+    
     // Try the configured address first
     driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
     

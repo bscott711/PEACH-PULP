@@ -60,8 +60,7 @@ void setup() {
   // Begin USB serial for debugging/monitoring
   Serial.begin(115200);
 
-  // Initialize shared Motor UART on pins 22, 27
-  Serial1.begin(115200, SERIAL_8N1, UART_RX, UART_TX);
+  // Shared Motor UART is initialized inside the MotorNode tasks cleanly
 
   // Initialize System State from NVS
   initSystemState();
