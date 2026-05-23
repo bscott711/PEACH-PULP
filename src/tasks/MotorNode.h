@@ -3,6 +3,9 @@
 #include "messaging.h"
 #include "drivers/MotorDriver.h"
 #include <Preferences.h>
+#include <freertos/semphr.h>
+
+extern SemaphoreHandle_t xUARTMutex;
 
 struct MotorConfig {
     HardwareSerial* serial;
@@ -28,6 +31,10 @@ private:
     // Position tracking (float units)
     float currentPosition;
     int targetSpeed;
+    
+    // Speed optimization state tracking
+    int lastSentSpeed;
+    bool lastSentLocked;
     
     // Homing and collision state
     bool isHomed;

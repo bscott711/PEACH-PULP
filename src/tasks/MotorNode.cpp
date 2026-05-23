@@ -2,12 +2,16 @@
 #include "drivers/LCDDriver.h"
 #include <esp_log.h>
 
+SemaphoreHandle_t xUARTMutex = NULL;
+
 static const char* TAG = "MOTOR_NODE";
 
 MotorNode::MotorNode(const MotorConfig& conf)
     : config(conf)
     , currentPosition(0.0f)
     , targetSpeed(0)
+    , lastSentSpeed(-999999)
+    , lastSentLocked(false)
     , isHomed(false)
     , isHoming(false)
     , collisionDetected(false)
@@ -21,50 +25,53 @@ MotorNode::~MotorNode() {
 }
 
 void MotorNode::hwInit() {
-    vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
-    
-    // Force a clean termination of the serial port before re-opening to bypass the library ESP32 end() bug!
-    config.serial->end();
-    vTaskDelay(pdMS_TO_TICKS(15));
-    
-    // Try the configured address first
-    driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
-    
-    bool isComm = driver.isSetupAndCommunicating();
-    if (!isComm) {
-        ESP_LOGE(TAG, "Motor %d failed at default address %d. Scanning alternate addresses...", (int)config.address + 1, (int)config.address);
+    if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+        vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
         
-        // Scan other addresses cleanly by closing and re-opening serial
-        int foundAddr = -1;
-        for (int addr = 0; addr < 4; addr++) {
-            if (addr == (int)config.address) continue;
+        // Force a clean termination of the serial port before re-opening to bypass the library ESP32 end() bug!
+        config.serial->end();
+        vTaskDelay(pdMS_TO_TICKS(15));
+        
+        // Try the configured address first
+        driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
+        
+        bool isComm = driver.isSetupAndCommunicating();
+        if (!isComm) {
+            ESP_LOGE(TAG, "Motor %d failed at default address %d. Scanning alternate addresses...", (int)config.address + 1, (int)config.address);
             
-            config.serial->end();
-            vTaskDelay(pdMS_TO_TICKS(20));
-            driver.begin(*(config.serial), (TMC2209::SerialAddress)addr, config.rxPin, config.txPin);
-            
-            if (driver.isSetupAndCommunicating()) {
-                foundAddr = addr;
-                break;
+            // Scan other addresses cleanly by closing and re-opening serial
+            int foundAddr = -1;
+            for (int addr = 0; addr < 4; addr++) {
+                if (addr == (int)config.address) continue;
+                
+                config.serial->end();
+                vTaskDelay(pdMS_TO_TICKS(20));
+                driver.begin(*(config.serial), (TMC2209::SerialAddress)addr, config.rxPin, config.txPin);
+                
+                if (driver.isSetupAndCommunicating()) {
+                    foundAddr = addr;
+                    break;
+                }
             }
-        }
-        
-        if (foundAddr != -1) {
-            ESP_LOGI(TAG, "Motor %d responded at Address %d!", (int)config.address + 1, foundAddr);
-            char buf[32];
-            snprintf(buf, sizeof(buf), "M%d FOUND AT ADDR %d", (int)config.address + 1, foundAddr);
-            LCD_setMessage(buf);
+            
+            if (foundAddr != -1) {
+                ESP_LOGI(TAG, "Motor %d responded at Address %d!", (int)config.address + 1, foundAddr);
+                char buf[32];
+                snprintf(buf, sizeof(buf), "M%d FOUND AT ADDR %d", (int)config.address + 1, foundAddr);
+                LCD_setMessage(buf);
+            } else {
+                ESP_LOGE(TAG, "Motor %d UART COMM FAILED on all addresses!", (int)config.address + 1);
+                char buf[32];
+                snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
+                LCD_setMessage(buf);
+            }
         } else {
-            ESP_LOGE(TAG, "Motor %d UART COMM FAILED on all addresses!", (int)config.address + 1);
+            ESP_LOGI(TAG, "Motor %d UART COMM OK at address %d", (int)config.address + 1, (int)config.address);
             char buf[32];
-            snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
+            snprintf(buf, sizeof(buf), "M%d UART COMM OK", (int)config.address + 1);
             LCD_setMessage(buf);
         }
-    } else {
-        ESP_LOGI(TAG, "Motor %d UART COMM OK at address %d", (int)config.address + 1, (int)config.address);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "M%d UART COMM OK", (int)config.address + 1);
-        LCD_setMessage(buf);
+        xSemaphoreGive(xUARTMutex);
     }
     
     isHomed = false;
@@ -88,7 +95,10 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             
         case MotorCmdAction::SET_SG_THRESHOLD:
             sgThreshold = (int)cmd.value;
-            driver.updateSGThreshold(sgThreshold);
+            if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+                driver.updateSGThreshold(sgThreshold);
+                xSemaphoreGive(xUARTMutex);
+            }
             ESP_LOGI(TAG, "SG threshold updated to %d", sgThreshold);
             break;
             
@@ -112,8 +122,11 @@ void MotorNode::hwUpdate() {
     if (homingState != H_IDLE) {
         switch (homingState) {
             case H_MOVING:
-                driver.setupHoming();
-                driver.setVelocity(-20000);
+                if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+                    driver.setupHoming();
+                    driver.setVelocity(-20000);
+                    xSemaphoreGive(xUARTMutex);
+                }
                 homingStartTime = xTaskGetTickCount();
                 homingState = H_BLIND_WAIT;
                 break;
@@ -132,8 +145,11 @@ void MotorNode::hwUpdate() {
                     ESP_LOGE(TAG, "Homing timeout - aborting");
                     LCD_setMessage("Homing: TIMEOUT");
                     
-                    driver.setVelocity(0);
-                    driver.finishHoming(sgThreshold);
+                    if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+                        driver.setVelocity(0);
+                        driver.finishHoming(sgThreshold);
+                        xSemaphoreGive(xUARTMutex);
+                    }
                     
                     isHoming = false;
                     targetSpeed = 0;
@@ -159,11 +175,19 @@ void MotorNode::hwUpdate() {
         }
     }
     
-    // Apply speed command to driver
-    if (motorLocked) {
-        driver.stop();
-    } else {
-        driver.setVelocity(targetSpeed);
+    // Apply speed command to driver ONLY on change to avoid flooding the shared half-duplex UART bus
+    bool speedChanged = (targetSpeed != lastSentSpeed) || (motorLocked != lastSentLocked);
+    if (speedChanged) {
+        if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+            if (motorLocked) {
+                driver.stop();
+            } else {
+                driver.setVelocity(targetSpeed);
+            }
+            xSemaphoreGive(xUARTMutex);
+        }
+        lastSentSpeed = targetSpeed;
+        lastSentLocked = motorLocked;
     }
     
     // Save state when stopped and homed

@@ -57,6 +57,9 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
+  // Create shared UART mutex before starting motor tasks
+  xUARTMutex = xSemaphoreCreateMutex();
+
   // Begin USB serial for debugging/monitoring
   Serial.begin(115200);
 
