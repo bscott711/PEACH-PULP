@@ -21,12 +21,23 @@ MotorNode::~MotorNode() {
 }
 
 void MotorNode::hwInit() {
-    // Initialize hardware pins and TMC2209 driver
-    pinMode(config.diagPin, INPUT_PULLDOWN);
     vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
     driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
     
-    // Always require re-homing on boot (clears stale NVS homing data)
+    // Check UART communication status
+    bool isComm = driver.isSetupAndCommunicating();
+    ESP_LOGI(TAG, "Motor Address %d UART Communication Status: %s", config.address, isComm ? "OK" : "FAILED");
+    
+    if (!isComm) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
+        LCD_setMessage(buf);
+    } else {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "M%d UART COMM OK", (int)config.address + 1);
+        LCD_setMessage(buf);
+    }
+    
     isHomed = false;
     currentPosition = 0.0f;
 }
@@ -87,26 +98,8 @@ void MotorNode::hwUpdate() {
                 break;
                 
             case H_POLLING:
-                // Check for collision OR timeout (5 seconds)
-                if (digitalRead(config.diagPin) == HIGH) {
-                    driver.setVelocity(0);
-                    ESP_LOGI(TAG, "Homing complete!");
-                    
-                    driver.finishHoming(sgThreshold);
-                    
-                    currentPosition = 0.0f;
-                    isHomed = true;
-                    isHoming = false;
-                    targetSpeed = 0;
-                    homingState = H_IDLE;
-                    
-                    // Save homing state to NVS
-                    if (preferences.begin(config.nvsNamespace, false)) {
-                        preferences.putBool("isHomed", true);
-                        preferences.putFloat("pos", 0.0f);
-                        preferences.end();
-                    }
-                } else if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(5000)) {
+                // Homing disabled as we have no DIAG pins
+                if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(5000)) {
                     ESP_LOGE(TAG, "Homing timeout - aborting");
                     LCD_setMessage("Homing: TIMEOUT");
                     

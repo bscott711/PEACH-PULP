@@ -9,7 +9,6 @@ struct MotorConfig {
     TMC2209::SerialAddress address;
     int rxPin;
     int txPin;
-    int diagPin;
     const char* nvsNamespace;
 };
 

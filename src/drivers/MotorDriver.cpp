@@ -52,3 +52,7 @@ void motorDriver::updateSGThreshold(int newThreshold) {
   newThreshold = constrain(newThreshold, 0, 255);
   driver.setStallGuardThreshold(newThreshold);
 }
+
+bool motorDriver::isSetupAndCommunicating() {
+  return driver.isSetupAndCommunicating();
+}

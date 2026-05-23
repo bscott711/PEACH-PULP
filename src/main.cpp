@@ -31,17 +31,12 @@ extern TaskHandle_t lcdTaskHandle;
 #define UART_RX 22
 #define UART_TX 27
 
-// DIAG pins for Steppers
-#define MOTOR1_DIAG 4
-#define MOTOR2_DIAG 35 // Changed from 27 to resolve conflict with UART_TX (GPIO 27)
-
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
     .serial = &Serial1,
     .address = TMC2209::SERIAL_ADDRESS_0,
     .rxPin = UART_RX,
     .txPin = UART_TX,
-    .diagPin = MOTOR1_DIAG,
     .nvsNamespace = "peach_m1"
 };
 
@@ -51,7 +46,6 @@ const MotorConfig motor2Config = {
     .address = TMC2209::SERIAL_ADDRESS_1,
     .rxPin = UART_RX,
     .txPin = UART_TX,
-    .diagPin = MOTOR2_DIAG,
     .nvsNamespace = "peach_m2"
 };
 
