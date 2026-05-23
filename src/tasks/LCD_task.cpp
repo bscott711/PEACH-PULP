@@ -7,7 +7,7 @@ void LCD_task(void *parameter) {
   TickType_t lastWakeTime = xTaskGetTickCount();
   uint32_t loopCount = 0;
 
-  Serial.println("[LCD_TASK] Started! Touch processing active.");
+  // Serial.println("[LCD_TASK] Started! Touch processing active.");
 
   while (1) {
     if (isOTA) {
@@ -19,7 +19,7 @@ void LCD_task(void *parameter) {
 
     loopCount++;
     if (loopCount % 50 == 0) {
-      Serial.printf("[LCD_TASK] heartbeat #%lu\n", loopCount);
+      // Serial.printf("[LCD_TASK] heartbeat #%lu\n", loopCount);
     }
 
     // Wait until next interval mark
