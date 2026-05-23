@@ -33,7 +33,7 @@ extern TaskHandle_t lcdTaskHandle;
 
 // DIAG pins for Steppers
 #define MOTOR1_DIAG 4
-#define MOTOR2_DIAG 27
+#define MOTOR2_DIAG 35 // Changed from 27 to resolve conflict with UART_TX (GPIO 27)
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
