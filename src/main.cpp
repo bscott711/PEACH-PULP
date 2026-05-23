@@ -72,7 +72,32 @@ void setup() {
   drawSplashScreen();
   fadeBacklightTo(255, 800);
 
-  updateBootProgress(10, "Connecting to WiFi...");
+  updateBootProgress(12, "Scanning motor drivers...");
+  TMC2209 tester;
+  bool addrFound[4] = {false, false, false, false};
+  int foundCount = 0;
+  for (int addr = 0; addr < 4; addr++) {
+    tester.setup(Serial1, 115200, (TMC2209::SerialAddress)addr, UART_RX, UART_TX);
+    if (tester.isSetupAndCommunicating()) {
+      addrFound[addr] = true;
+      foundCount++;
+    }
+  }
+
+  String foundAddrs = "";
+  if (foundCount == 0) {
+    foundAddrs = "NONE";
+  } else {
+    for (int addr = 0; addr < 4; addr++) {
+      if (addrFound[addr]) {
+        foundAddrs += String(addr) + " ";
+      }
+    }
+  }
+  updateBootProgress(15, "TMC Addrs Found: " + foundAddrs);
+  vTaskDelay(pdMS_TO_TICKS(1500));
+
+  updateBootProgress(18, "Connecting to WiFi...");
   
   WiFi.mode(WIFI_STA);
   Preferences prefs;
