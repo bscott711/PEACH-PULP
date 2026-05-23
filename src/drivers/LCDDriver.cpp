@@ -428,7 +428,7 @@ void draw_menu() {
     
     tft.setTextColor(COLOR_PEACH, getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("PEACH PULP v3.3", 160, 5, 1);
+    tft.drawString("PEACH PULP v4.0", 160, 5, 1);
   }
 
   // 1. Redraw setpoints if they changed

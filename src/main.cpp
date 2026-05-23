@@ -195,16 +195,16 @@ void setup() {
   vTaskPrioritySet(NULL, 5);
 
   // 1. Start Active Motion Nodes
-  // if (!g_motor1Node.start("Motor1Node", 4096, 2))
-  //   ESP_LOGE("MAIN", "Failed Motor1Node");
-  // if (!g_motor2Node.start("Motor2Node", 4096, 2))
-  //   ESP_LOGE("MAIN", "Failed Motor2Node");
+  if (!g_motor1Node.start("Motor1Node", 4096, 2))
+    ESP_LOGE("MAIN", "Failed Motor1Node");
+  if (!g_motor2Node.start("Motor2Node", 4096, 2))
+    ESP_LOGE("MAIN", "Failed Motor2Node");
 
   // 2. Link the global messaging queues
-  // motor1CmdQueue = g_motor1Node.getCmdQueue();
-  // motor1TelQueue = g_motor1Node.getTelQueue();
-  // motor2CmdQueue = g_motor2Node.getCmdQueue();
-  // motor2TelQueue = g_motor2Node.getTelQueue();
+  motor1CmdQueue = g_motor1Node.getCmdQueue();
+  motor1TelQueue = g_motor1Node.getTelQueue();
+  motor2CmdQueue = g_motor2Node.getCmdQueue();
+  motor2TelQueue = g_motor2Node.getTelQueue();
 
   // 3. Create Dependent Tasks
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
