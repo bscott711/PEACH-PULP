@@ -22,17 +22,42 @@ MotorNode::~MotorNode() {
 
 void MotorNode::hwInit() {
     vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
+    
+    // Try the configured address first
     driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
     
-    // Check UART communication status
     bool isComm = driver.isSetupAndCommunicating();
-    ESP_LOGI(TAG, "Motor Address %d UART Communication Status: %s", config.address, isComm ? "OK" : "FAILED");
-    
     if (!isComm) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
-        LCD_setMessage(buf);
+        ESP_LOGE(TAG, "Motor %d failed at default address %d. Scanning alternate addresses...", (int)config.address + 1, (int)config.address);
+        
+        // Scan other addresses cleanly by closing and re-opening serial
+        int foundAddr = -1;
+        for (int addr = 0; addr < 4; addr++) {
+            if (addr == (int)config.address) continue;
+            
+            config.serial->end();
+            vTaskDelay(pdMS_TO_TICKS(20));
+            driver.begin(*(config.serial), (TMC2209::SerialAddress)addr, config.rxPin, config.txPin);
+            
+            if (driver.isSetupAndCommunicating()) {
+                foundAddr = addr;
+                break;
+            }
+        }
+        
+        if (foundAddr != -1) {
+            ESP_LOGI(TAG, "Motor %d responded at Address %d!", (int)config.address + 1, foundAddr);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "M%d FOUND AT ADDR %d", (int)config.address + 1, foundAddr);
+            LCD_setMessage(buf);
+        } else {
+            ESP_LOGE(TAG, "Motor %d UART COMM FAILED on all addresses!", (int)config.address + 1);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
+            LCD_setMessage(buf);
+        }
     } else {
+        ESP_LOGI(TAG, "Motor %d UART COMM OK at address %d", (int)config.address + 1, (int)config.address);
         char buf[32];
         snprintf(buf, sizeof(buf), "M%d UART COMM OK", (int)config.address + 1);
         LCD_setMessage(buf);
