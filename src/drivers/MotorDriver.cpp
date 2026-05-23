@@ -33,7 +33,7 @@ void motorDriver::setVelocity(int newSpeed) {
 void motorDriver::stop() { driver.moveAtVelocity(0); }
 
 void motorDriver::setupHoming() {
-  // Serial.println("Starting Hardware Sensorless Homing...");
+  Serial.println("Starting Hardware Sensorless Homing...");
 
   driver.setRunCurrent(70);
   driver.enableStealthChop();

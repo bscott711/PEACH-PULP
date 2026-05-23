@@ -27,9 +27,9 @@ void updateBootProgress(int percent, String message);
 
 extern TaskHandle_t lcdTaskHandle;
 
-// Shared UART pins for TMC2209 (Option B: Software Crossover on CYD RX/TX Port)
-#define UART_RX 1  // Physical CYD TX Pin (GPIO 1) mapped as ESP32 RX
-#define UART_TX 3  // Physical CYD RX Pin (GPIO 3) mapped as ESP32 TX
+// Shared UART pins for TMC2209 (CYD CN2 I2C JST Port)
+#define UART_RX 22  // SDA Pin on CN2 (GPIO 22)
+#define UART_TX 21  // SCL Pin on CN2 (GPIO 21)
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
@@ -60,8 +60,8 @@ void setup() {
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
 
-  // Begin USB serial disabled for Option B to prevent hardware pin mapping conflicts on GPIO 1 and 3
-  // Serial.begin(115200);
+  // Re-enabled USB serial for real-time diagnostics since CN2 JST has no CH340 conflicts!
+  Serial.begin(115200);
 
   // Shared Motor UART is initialized inside the MotorNode tasks cleanly
 
