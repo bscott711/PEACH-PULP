@@ -4,9 +4,9 @@
 #include "tasks/MotorNode.h"
 #include "drivers/LCDDriver.h"
 #include <WiFi.h>
-#include <WiFiMulti.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
+#include <Preferences.h>
 
 #define TFT_BL 21
 #define BACKLIGHT_CHANNEL 0
@@ -19,9 +19,7 @@ const uint16_t COLOR_TEXT_MUTED = 0x632C;  // Muted steel gray under inversion
 const uint16_t COLOR_TEXT_WHITE = 0x18C3;  // Soft white under inversion
 const uint16_t COLOR_BORDER = 0xC618;      // Subtle border gray under inversion
 
-WiFiMulti wifiMulti;
-
-// Boot UI Helpers (forward declarations)
+// Forward declarations
 void initBacklight();
 void fadeBacklightTo(int targetBrightness, int durationMs);
 void drawSplashScreen();
@@ -82,15 +80,78 @@ void setup() {
 
   updateBootProgress(10, "Connecting to WiFi...");
   
-  // Configure WiFi STA and register multiple known APs
   WiFi.mode(WIFI_STA);
-  wifiMulti.addAP("sdsmtopn", "");
-  wifiMulti.addAP("TheChaosCapital", "bccbtscott");
-  
-  // Wait a bit for WiFi connection
-  for(int i=0; i<15 && wifiMulti.run() != WL_CONNECTED; i++) {
-    updateBootProgress(10 + (i * 3), "Waiting for WiFi...");
-    vTaskDelay(pdMS_TO_TICKS(500));
+  Preferences prefs;
+  prefs.begin("wifi_pref", true); // Read-only mode
+  String lastSSID = prefs.getString("last_ssid", "");
+  prefs.end();
+
+  bool connected = false;
+
+  if (lastSSID.length() > 0) {
+    const char* pass = (lastSSID == "TheChaosCapital") ? "bccbtscott" : "";
+    updateBootProgress(20, "Connecting to saved AP...");
+    WiFi.begin(lastSSID.c_str(), pass);
+    
+    // Quick 2.5-second wait
+    for (int i = 0; i < 25; i++) {
+      if (WiFi.status() == WL_CONNECTED) {
+        connected = true;
+        break;
+      }
+      updateBootProgress(20 + i, "Connecting to saved AP...");
+      vTaskDelay(pdMS_TO_TICKS(100));
+    }
+  }
+
+  if (!connected) {
+    updateBootProgress(45, "Scanning networks...");
+    WiFi.disconnect(true);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    WiFi.mode(WIFI_STA);
+    
+    int n = WiFi.scanNetworks();
+    String bestSSID = "";
+    const char* bestPass = "";
+    int bestRSSI = -999;
+
+    for (int i = 0; i < n; i++) {
+      String ssid = WiFi.SSID(i);
+      int rssi = WiFi.RSSI(i);
+      if (ssid == "sdsmtopn") {
+        if (rssi > bestRSSI) {
+          bestSSID = "sdsmtopn";
+          bestPass = "";
+          bestRSSI = rssi;
+        }
+      } else if (ssid == "TheChaosCapital") {
+        if (rssi > bestRSSI) {
+          bestSSID = "TheChaosCapital";
+          bestPass = "bccbtscott";
+          bestRSSI = rssi;
+        }
+      }
+    }
+
+    if (bestSSID.length() > 0) {
+      updateBootProgress(55, "Connecting to " + bestSSID + "...");
+      WiFi.begin(bestSSID.c_str(), bestPass);
+      
+      // Wait up to 5 seconds for connection
+      for (int i = 0; i < 50; i++) {
+        if (WiFi.status() == WL_CONNECTED) {
+          connected = true;
+          
+          // Save to preferences
+          prefs.begin("wifi_pref", false); // Read-write
+          prefs.putString("last_ssid", bestSSID);
+          prefs.end();
+          break;
+        }
+        updateBootProgress(55 + (i / 5), "Connecting to " + bestSSID + "...");
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
+    }
   }
   
   if (WiFi.status() == WL_CONNECTED) {
@@ -155,15 +216,6 @@ void setup() {
 
 void loop() {
   ArduinoOTA.handle();
-  
-  // Maintain WiFi connection and handle automatic reconnection/switching
-  static uint32_t lastWiFiCheck = 0;
-  uint32_t now = millis();
-  if (now - lastWiFiCheck > 5000) {
-    wifiMulti.run();
-    lastWiFiCheck = now;
-  }
-  
   vTaskDelay(pdMS_TO_TICKS(50));
 }
 
