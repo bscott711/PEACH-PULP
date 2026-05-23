@@ -89,7 +89,7 @@ void setup() {
   bool connected = false;
 
   if (lastSSID.length() > 0) {
-    const char* pass = (lastSSID == "TheChaosCapital") ? "bccbtscott" : "";
+    const char* pass = (lastSSID == "Chaos Capital") ? "bccbtscott" : "";
     updateBootProgress(20, "Connecting to saved AP...");
     WiFi.begin(lastSSID.c_str(), pass);
     
@@ -124,9 +124,9 @@ void setup() {
           bestPass = "";
           bestRSSI = rssi;
         }
-      } else if (ssid == "TheChaosCapital") {
+      } else if (ssid == "Chaos Capital") {
         if (rssi > bestRSSI) {
-          bestSSID = "TheChaosCapital";
+          bestSSID = "Chaos Capital";
           bestPass = "bccbtscott";
           bestRSSI = rssi;
         }
