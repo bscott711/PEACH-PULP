@@ -4,6 +4,11 @@
 void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address, int rxPin, int txPin) {
   driver.setup(serial, SERIAL_BAUD_RATE, address, rxPin, txPin);
+  
+  // Set TX pin as Open-Drain so it doesn't fight the motor driver's TX output on the single-wire link
+  pinMode(txPin, OUTPUT_OPEN_DRAIN);
+  pinMode(rxPin, INPUT_PULLUP);
+
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
 
   driver.disableCoolStep();
