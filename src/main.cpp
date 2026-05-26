@@ -57,6 +57,12 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
+  // Force a clean electrical reset of the shared P5 serial lines to clear ESP32 ROM bootloader noise.
+  // This pulls the lines to a stable HIGH idle state, resetting the TMC2209 UART state machines.
+  pinMode(1, INPUT_PULLUP);
+  pinMode(3, INPUT_PULLUP);
+  delay(150); 
+
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
 
