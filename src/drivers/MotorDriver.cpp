@@ -56,3 +56,11 @@ void motorDriver::updateSGThreshold(int newThreshold) {
 bool motorDriver::isSetupAndCommunicating() {
   return driver.isSetupAndCommunicating();
 }
+
+bool motorDriver::isCommunicating() {
+  return driver.isCommunicating();
+}
+
+uint8_t motorDriver::getVersion() {
+  return driver.getVersion();
+}

@@ -61,8 +61,17 @@ void MotorNode::hwInit() {
                 LCD_setMessage(buf);
             } else {
                 ESP_LOGE(TAG, "Motor %d UART COMM FAILED on all addresses!", (int)config.address + 1);
+                
+                // Read raw chip diagnostics over the UART bus to display exactly what is happening
+                uint8_t ver = driver.getVersion();
                 char buf[32];
-                snprintf(buf, sizeof(buf), "M%d UART COMM ERROR", (int)config.address + 1);
+                if (ver == 0x21) {
+                    snprintf(buf, sizeof(buf), "M%d ERR: NOT SETUP (V:0x21)", (int)config.address + 1);
+                } else if (ver == 0x00 || ver == 0xFF) {
+                    snprintf(buf, sizeof(buf), "M%d ERR: DEAD BUS (V:0x%02X)", (int)config.address + 1, ver);
+                } else {
+                    snprintf(buf, sizeof(buf), "M%d ERR: BAD VER (V:0x%02X)", (int)config.address + 1, ver);
+                }
                 LCD_setMessage(buf);
             }
         } else {

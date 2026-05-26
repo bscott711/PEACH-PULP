@@ -22,6 +22,8 @@ public:
   void updateSGThreshold(int newThreshold);
 
   bool isSetupAndCommunicating();
+  bool isCommunicating();
+  uint8_t getVersion();
 
 private:
   TMC2209 driver;
