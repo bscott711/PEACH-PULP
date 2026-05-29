@@ -27,13 +27,13 @@ void updateBootProgress(int percent, String message);
 
 extern TaskHandle_t lcdTaskHandle;
 
-// Shared UART pins for TMC2209 (CYD P5 RX/TX JST Port - Software Crossover)
-#define UART_RX 1  // Physical CYD TX Pin (GPIO 1) mapped as ESP32 RX
-#define UART_TX 3  // Physical CYD RX Pin (GPIO 3) mapped as ESP32 TX
+// Shared UART pins for TMC2209 (CYD CN1 Port - GPIO 22/27)
+#define UART_RX 22  // GPIO 22 on CN1 mapped as ESP32 RX
+#define UART_TX 27  // GPIO 27 on CN1 mapped as ESP32 TX
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
-    .serial = &Serial, // Use native Serial (UART0) to avoid pin ownership conflicts
+    .serial = &Serial2, // Use Hardware Serial 2 (UART2) to avoid CH340 conflicts
     .address = TMC2209::SERIAL_ADDRESS_0,
     .rxPin = UART_RX,
     .txPin = UART_TX,
@@ -42,7 +42,7 @@ const MotorConfig motor1Config = {
 
 // Configure Motor 2 (Address 1)
 const MotorConfig motor2Config = {
-    .serial = &Serial, // Use native Serial (UART0) to avoid pin ownership conflicts
+    .serial = &Serial2, // Use Hardware Serial 2 (UART2) to avoid CH340 conflicts
     .address = TMC2209::SERIAL_ADDRESS_1,
     .rxPin = UART_RX,
     .txPin = UART_TX,
@@ -57,10 +57,10 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
-  // Force a clean electrical reset of the shared P5 serial lines to clear ESP32 ROM bootloader noise.
+  // Force a clean electrical reset of the shared CN1 serial lines to clear power-up noise.
   // This pulls the lines to a stable HIGH idle state, resetting the TMC2209 UART state machines.
-  pinMode(1, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
+  pinMode(22, INPUT_PULLUP);
+  pinMode(27, INPUT_PULLUP);
   delay(150); 
 
   // Create shared UART mutex before starting motor tasks
