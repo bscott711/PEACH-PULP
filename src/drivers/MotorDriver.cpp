@@ -3,18 +3,24 @@
 
 void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address, int rxPin, int txPin) {
-  // Pass -1, -1 for pins to prevent TMC2209 library from repeatedly re-configuring the 
-  // GPIO matrix (which it does via Serial1.begin(baud, SERIAL_8N1, rx, tx)).
-  // We already cleanly initialized Serial1 with the correct pins in main.cpp setup().
+  // Replicate the exact steps from the successful diagnostic scan:
+  // 1. Force TX high to wake up the TMC2209 from standby
+  pinMode(txPin, OUTPUT);
+  digitalWrite(txPin, HIGH);
+  vTaskDelay(pdMS_TO_TICKS(50));
+
+  // 2. End and restart the serial to ensure a perfectly clean driver state
+  serial.end();
+  vTaskDelay(pdMS_TO_TICKS(10));
+  serial.begin(SERIAL_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
+  vTaskDelay(pdMS_TO_TICKS(20));
+
+  // 3. Setup TMC2209 passing -1, -1 so the library doesn't mess with the GPIO matrix we just set up
   driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
 
-  // IMPORTANT: Do NOT call pinMode() here — Serial2.begin() inside driver.setup()
-  // already configures the GPIO matrix to connect rxPin/txPin to the UART2 peripheral.
-  // Calling pinMode() would override that mapping and disconnect the pins from UART2,
-  // causing a "dead bus" (version reads return 0x00/0xFF).
-
-  // Required when multiple TMC2209 drivers share a single-wire UART bus
-  driver.setReplyDelay(2);
+  // IMPORTANT: Do NOT call pinMode() here — Serial1.begin() configures the matrix.
+  // We removed setReplyDelay(2) because PEACH_PIT and the diagnostic script don't use it,
+  // and it could be interfering with the driver's default communication timing.
 
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
 
