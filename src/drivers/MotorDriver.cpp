@@ -3,11 +3,18 @@
 
 void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address, int rxPin, int txPin) {
-  driver.setup(serial, SERIAL_BAUD_RATE, address, rxPin, txPin);
-  
-  // Set TX pin as Open-Drain so it doesn't fight the motor driver's TX output on the single-wire link
-  pinMode(txPin, OUTPUT_OPEN_DRAIN);
-  pinMode(rxPin, INPUT_PULLUP);
+  // Pass -1, -1 for pins to prevent TMC2209 library from repeatedly re-configuring the 
+  // GPIO matrix (which it does via Serial1.begin(baud, SERIAL_8N1, rx, tx)).
+  // We already cleanly initialized Serial1 with the correct pins in main.cpp setup().
+  driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
+
+  // IMPORTANT: Do NOT call pinMode() here — Serial2.begin() inside driver.setup()
+  // already configures the GPIO matrix to connect rxPin/txPin to the UART2 peripheral.
+  // Calling pinMode() would override that mapping and disconnect the pins from UART2,
+  // causing a "dead bus" (version reads return 0x00/0xFF).
+
+  // Required when multiple TMC2209 drivers share a single-wire UART bus
+  driver.setReplyDelay(2);
 
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
 

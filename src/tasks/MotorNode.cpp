@@ -28,9 +28,9 @@ void MotorNode::hwInit() {
     if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
         vTaskDelay(pdMS_TO_TICKS(50)); // Wait for shared serial to be ready
         
-        // Force a clean termination of the serial port before re-opening to bypass the library ESP32 end() bug!
-        config.serial->end();
-        vTaskDelay(pdMS_TO_TICKS(15));
+        // NOTE: Do NOT call config.serial->end() here. The TMC2209 library's ESP32
+        // setup() intentionally skips end() because it causes GPIO matrix issues.
+        // The library's begin() inside setup() handles re-initialization correctly.
         
         // Try the configured address first
         driver.begin(*(config.serial), config.address, config.rxPin, config.txPin);
@@ -44,7 +44,6 @@ void MotorNode::hwInit() {
             for (int addr = 0; addr < 4; addr++) {
                 if (addr == (int)config.address) continue;
                 
-                config.serial->end();
                 vTaskDelay(pdMS_TO_TICKS(20));
                 driver.begin(*(config.serial), (TMC2209::SerialAddress)addr, config.rxPin, config.txPin);
                 

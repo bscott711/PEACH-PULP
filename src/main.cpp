@@ -28,12 +28,12 @@ void updateBootProgress(int percent, String message);
 extern TaskHandle_t lcdTaskHandle;
 
 // Shared UART pins for TMC2209 (CYD CN1 Port - GPIO 22/27)
-#define UART_RX 22  // GPIO 22 on CN1 mapped as ESP32 RX
-#define UART_TX 27  // GPIO 27 on CN1 mapped as ESP32 TX
+#define UART_RX 27  // GPIO 27 on CN1 is ESP32 RX (confirmed by bus scan)
+#define UART_TX 22  // GPIO 22 on CN1 is ESP32 TX (confirmed by bus scan)
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
-    .serial = &Serial2, // Use Hardware Serial 2 (UART2) to avoid CH340 conflicts
+    .serial = &Serial1, // Use Serial1 (UART1) — cleanly remaps pins unlike UART2 whose defaults (16/17) conflict with CYD RGB LED
     .address = TMC2209::SERIAL_ADDRESS_0,
     .rxPin = UART_RX,
     .txPin = UART_TX,
@@ -42,7 +42,7 @@ const MotorConfig motor1Config = {
 
 // Configure Motor 2 (Address 1)
 const MotorConfig motor2Config = {
-    .serial = &Serial2, // Use Hardware Serial 2 (UART2) to avoid CH340 conflicts
+    .serial = &Serial1, // Use Serial1 (UART1)
     .address = TMC2209::SERIAL_ADDRESS_1,
     .rxPin = UART_RX,
     .txPin = UART_TX,
@@ -57,19 +57,15 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
-  // Force a clean electrical reset of the shared CN1 serial lines to clear power-up noise.
-  // This pulls the lines to a stable HIGH idle state, resetting the TMC2209 UART state machines.
-  pinMode(22, INPUT_PULLUP);
-  pinMode(27, INPUT_PULLUP);
-  delay(150); 
-
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
 
-  // USB serial logging disabled to prevent conflicts on P5 (GPIO 1 & 3)
-  // Serial.begin(115200);
+  // USB serial for debug logging — safe since motors use Serial1 on GPIO 22/27
+  Serial.begin(115200);
 
-  // Shared Motor UART is initialized inside the MotorNode tasks cleanly
+  // Pre-initialize Serial1 on CN1 pins in setup() context
+  Serial1.begin(SERIAL_BAUD_RATE, SERIAL_8N1, UART_RX, UART_TX);
+  delay(50);
 
   // Initialize System State from NVS
   initSystemState();
