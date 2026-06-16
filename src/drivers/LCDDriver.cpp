@@ -488,9 +488,7 @@ void draw_menu() {
       strcpy(lastLcdMsg, localMsg);
     } else {
       // Clear banner if expired
-      tft.setTextColor(bg, bg);
-      tft.setTextDatum(ML_DATUM);
-      tft.drawString("                             ", 5, 227, 2);
+      tft.fillRect(0, 215, 320, 25, bg);
       lastLcdMsg[0] = '\0';
     }
     lastMsgVisible = isMsgVisible;

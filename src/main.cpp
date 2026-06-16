@@ -28,8 +28,8 @@ void updateBootProgress(int percent, String message);
 extern TaskHandle_t lcdTaskHandle;
 
 // Shared UART pins for TMC2209 (CYD CN1 Port - GPIO 22/27)
-#define UART_RX 27  // GPIO 27 on CN1 is ESP32 RX (confirmed by bus scan)
-#define UART_TX 22  // GPIO 22 on CN1 is ESP32 TX (confirmed by bus scan)
+#define UART_RX 22  // Swapped in software to match the new board wiring (was 27)
+#define UART_TX 27  // Swapped in software to match the new board wiring (was 22)
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
