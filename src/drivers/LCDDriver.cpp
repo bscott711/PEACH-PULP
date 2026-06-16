@@ -58,7 +58,7 @@ void drawThemeIcon() {}
 void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
   int halfW = width / 2;
   int startX = centerX - halfW;
-  int targetX = centerX + (setpoint * halfW) / 100;
+  int targetX = centerX + (setpoint * halfW) / 10;
   uint16_t bg = getBgColor();
   
   // Clear speed bar region cleanly
@@ -189,11 +189,11 @@ static int pressedButtonId = 0;
 
 void executeButtonAction(int buttonId) {
   if (buttonId == 1) {
-    systemState.motor1SpeedSetpoint = std::max(-100, systemState.motor1SpeedSetpoint - 10);
+    systemState.motor1SpeedSetpoint = std::max(-10, systemState.motor1SpeedSetpoint - 1);
     LCD_setMessage("M1 Speed -");
   }
   else if (buttonId == 2) {
-    systemState.motor1SpeedSetpoint = std::min(100, systemState.motor1SpeedSetpoint + 10);
+    systemState.motor1SpeedSetpoint = std::min(10, systemState.motor1SpeedSetpoint + 1);
     LCD_setMessage("M1 Speed +");
   }
   else if (buttonId == 3) {
@@ -201,11 +201,11 @@ void executeButtonAction(int buttonId) {
     LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
   }
   else if (buttonId == 4) {
-    systemState.motor2SpeedSetpoint = std::max(-100, systemState.motor2SpeedSetpoint - 10);
+    systemState.motor2SpeedSetpoint = std::max(-10, systemState.motor2SpeedSetpoint - 1);
     LCD_setMessage("M2 Speed -");
   }
   else if (buttonId == 5) {
-    systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 10);
+    systemState.motor2SpeedSetpoint = std::min(10, systemState.motor2SpeedSetpoint + 1);
     LCD_setMessage("M2 Speed +");
   }
   else if (buttonId == 6) {
@@ -228,22 +228,16 @@ void executeButtonAction(int buttonId) {
 void handleSliderTouch(int sliderId, int t_x) {
   if (sliderId == 10) {
     int dx = t_x - 80;
-    int rawSetpoint = (dx * 100) / 70;
-    rawSetpoint = std::max(-100, std::min(100, rawSetpoint));
-    // Round to nearest 5 for premium feel
-    int setpoint = (rawSetpoint >= 0) ? ((rawSetpoint + 2) / 5) * 5 : ((rawSetpoint - 2) / 5) * 5;
-    setpoint = std::max(-100, std::min(100, setpoint));
+    int rawSetpoint = (dx * 10) / 70;
+    int setpoint = std::max(-10, std::min(10, rawSetpoint));
     if (systemState.motor1SpeedSetpoint != setpoint) {
       systemState.motor1SpeedSetpoint = setpoint;
       LCD_setMessage("M1 Speed Set");
     }
   } else if (sliderId == 11) {
     int dx = t_x - 240;
-    int rawSetpoint = (dx * 100) / 70;
-    rawSetpoint = std::max(-100, std::min(100, rawSetpoint));
-    // Round to nearest 5 for premium feel
-    int setpoint = (rawSetpoint >= 0) ? ((rawSetpoint + 2) / 5) * 5 : ((rawSetpoint - 2) / 5) * 5;
-    setpoint = std::max(-100, std::min(100, setpoint));
+    int rawSetpoint = (dx * 10) / 70;
+    int setpoint = std::max(-10, std::min(10, rawSetpoint));
     if (systemState.motor2SpeedSetpoint != setpoint) {
       systemState.motor2SpeedSetpoint = setpoint;
       LCD_setMessage("M2 Speed Set");

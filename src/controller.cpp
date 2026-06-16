@@ -23,8 +23,8 @@ EventGroupHandle_t controlEvents;
 SystemState systemState = {.mode = IDLE,
                            .collisionDetected = false,
                            .collisionTimestamp = 0,
-                           .motor1SpeedSetpoint = 50,
-                           .motor2SpeedSetpoint = 50,
+                           .motor1SpeedSetpoint = 5,
+                           .motor2SpeedSetpoint = 5,
                            .motor1Running = false,
                            .motor2Running = false};
 
