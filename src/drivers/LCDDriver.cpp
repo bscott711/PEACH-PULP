@@ -104,71 +104,159 @@ void LCDInit() {
 
 
 
+float constrainFloat(float val, float min_val, float max_val) {
+    if (val < min_val) return min_val;
+    if (val > max_val) return max_val;
+    return val;
+}
+
 void drawOTAScreen(int percent) {
-  static int lastPercent = -1;
-  if (percent == lastPercent) return;
+    static int lastPercent = -1;
+    if (percent == lastPercent) return;
+    
+    static float last_p = -1.0;
+    static int last_peach_y = 80;
+    static int last_peach_x = 190;
 
-  const uint16_t BG      = getBgColor();      // Deep dark charcoal
-  const uint16_t PEACH   = COLOR_PEACH;       // Vibrant peach/orange
-  const uint16_t MUTED   = getMutedColor();   // Muted steel gray
-  const uint16_t WHITE   = getTextColor();    // Crisp soft white
-  const uint16_t BORDER  = getBorderColor();  // Subtle border gray
-  const uint16_t BAR_BG  = getBorderColor();  // Dark track background
+    float p = (float)percent / 100.0f;
+    p = constrainFloat(p, 0.0, 1.0);
 
-  int w  = tft.width();
-  int h  = tft.height();
-  int cx = w / 2;
+    // RGB565 Colors (Standard, no inversion)
+    uint16_t TREE_COLOR_SKY = tft.color565(135, 206, 235);
+    uint16_t TREE_COLOR_GRASS = tft.color565(34, 139, 34);
+    uint16_t TREE_COLOR_TRUNK = tft.color565(101, 67, 33);
+    uint16_t TREE_COLOR_LEAF = tft.color565(34, 139, 34);
+    uint16_t TREE_COLOR_FLOWER = tft.color565(255, 182, 193);
+    uint16_t TREE_COLOR_PEACH = tft.color565(255, 140, 0);
 
-  // Progress bar geometry
-  const int barW = w - 60;       // 260px on a 320px screen
-  const int barH = 18;
-  const int barX = (w - barW) / 2;
-  const int barY = h * 0.60;
+    // Initial background generation
+    if (last_p < 0.0 || p < last_p) {
+        tft.fillScreen(TREE_COLOR_SKY);
+        tft.fillRect(0, 200, 320, 40, TREE_COLOR_GRASS);
+        last_p = 0.0;
+        last_peach_y = 80;
+        last_peach_x = 190;
+    }
 
-  // --- First frame: draw the static OTA screen elements ---
-  if (lastPercent == -1 || percent == 0) {
-      tft.fillScreen(BG);
-      tft.setTextDatum(MC_DATUM);
+    // 1. Trunk (0% - 15%)
+    float trunk_p = constrainFloat((p - 0.0) / 0.15, 0.0, 1.0);
+    if (trunk_p > 0) {
+        int h = trunk_p * 80;
+        tft.fillRect(150, 200 - h, 20, h, TREE_COLOR_TRUNK);
+    }
 
-      // Title
-      tft.setTextColor(PEACH);
-      tft.drawString("OTA UPDATE", cx, h * 0.25, 4);
+    // 2. Limbs (15% - 30%)
+    float limb_p = constrainFloat((p - 0.15) / 0.15, 0.0, 1.0);
+    if (limb_p > 0) {
+        int endX1 = 160 - (limb_p * 40);
+        int endY1 = 150 - (limb_p * 50);
+        tft.drawLine(160, 150, endX1, endY1, TREE_COLOR_TRUNK);
+        tft.drawLine(159, 150, endX1 - 1, endY1, TREE_COLOR_TRUNK);
 
-      // Subtitle
-      tft.setTextColor(MUTED);
-      tft.drawString("Receiving new firmware...", cx, h * 0.25 + 35, 2);
+        int endX2 = 160 + (limb_p * 50);
+        int endY2 = 140 - (limb_p * 50);
+        tft.drawLine(160, 140, endX2, endY2, TREE_COLOR_TRUNK);
+        tft.drawLine(161, 140, endX2 + 1, endY2, TREE_COLOR_TRUNK);
 
-      // Progress bar track (rounded border + dark fill)
-      tft.drawRoundRect(barX - 2, barY - 2, barW + 4, barH + 4, 5, BORDER);
-      tft.fillRoundRect(barX, barY, barW, barH, 3, BAR_BG);
-  }
+        int endY3 = 120 - (limb_p * 60);
+        tft.drawLine(160, 120, 160, endY3, TREE_COLOR_TRUNK);
+        tft.drawLine(159, 120, 159, endY3, TREE_COLOR_TRUNK);
+        tft.drawLine(161, 120, 161, endY3, TREE_COLOR_TRUNK);
+    }
 
-  // --- Completion screen ---
-  if (percent == 100) {
-      tft.fillScreen(BG);
-      tft.setTextDatum(MC_DATUM);
-      tft.setTextColor(PEACH);
-      tft.drawString("UPDATE COMPLETE", cx, h / 2 - 10, 4);
-      tft.setTextColor(MUTED);
-      tft.drawString("Rebooting...", cx, h / 2 + 25, 2);
-      lastPercent = percent;
-      return;
-  }
+    // 3. Leaves (30% - 50%)
+    float leaf_p = constrainFloat((p - 0.30) / 0.20, 0.0, 1.0);
+    if (leaf_p > 0) {
+        int r = leaf_p * 25;
+        tft.fillCircle(120, 100, r, TREE_COLOR_LEAF);
+        tft.fillCircle(210, 90, r, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 60, r, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 100, r + 5, TREE_COLOR_LEAF);
+    }
 
-  // --- Update the progress bar fill ---
-  int fillW = (barW * percent) / 100;
-  if (fillW > 0) {
-      tft.fillRoundRect(barX, barY, fillW, barH, 3, PEACH);
-  }
+    // 4. Flowers (50% - 70%)
+    float flower_p = constrainFloat((p - 0.50) / 0.20, 0.0, 1.0);
+    if (flower_p > 0) {
+        int r = flower_p * 4;
+        tft.fillCircle(110, 95, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(130, 110, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(200, 85, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(220, 100, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(150, 55, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(170, 70, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(160, 110, r, TREE_COLOR_FLOWER);
+    }
 
-  // --- Percentage text below bar ---
-  // Clear the text area first to avoid overlapping digits
-  tft.fillRect(0, barY + barH + 6, w, 20, BG);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(WHITE, BG);
-  tft.drawString(String(percent) + "%", cx, barY + barH + 15, 2);
+    // 5. Peaches (70% - 85%)
+    float peach_p = constrainFloat((p - 0.70) / 0.15, 0.0, 1.0);
+    if (peach_p > 0) {
+        int r = peach_p * 8;
+        tft.fillCircle(110, 110, r, TREE_COLOR_PEACH);
+        tft.fillCircle(200, 100, r, TREE_COLOR_PEACH);
+        if (p <= 0.85) {
+            tft.fillCircle(190, 80, r, TREE_COLOR_PEACH); // Static prior to falling
+        }
+    }
 
-  lastPercent = percent;
+    // 6. Falling Peach (85% - 100%)
+    float fall_p = constrainFloat((p - 0.85) / 0.15, 0.0, 1.0);
+    if (fall_p > 0) {
+        int current_y = 80;
+        int current_x = 190;
+
+        // Bounce physics
+        if (fall_p <= 0.5) {
+            float t = fall_p / 0.5;
+            current_y = 80 + (192 - 80) * (t * t);
+        } else if (fall_p <= 0.75) {
+            float t = (fall_p - 0.5) / 0.25;
+            current_y = 168 * ((t - 0.5) * (t - 0.5)) + 150;
+            current_x = 190 + (t * 15);
+        } else {
+            float t = (fall_p - 0.75) / 0.25;
+            current_y = 88 * ((t - 0.5) * (t - 0.5)) + 170;
+            current_x = 205 + (t * 10);
+        }
+
+        int last_x = last_peach_x;
+        int last_y = last_peach_y;
+
+        if (current_y != last_y || current_x != last_x) {
+            // Erase previous bounding box
+            tft.fillRect(last_x - 8, last_y - 8, 17, 17, TREE_COLOR_SKY);
+            
+            // Redraw grass and leaf overlaps if necessary
+            if (last_y + 8 >= 200) {
+                tft.fillRect(last_x - 8, 200, 17, (last_y + 8) - 199, TREE_COLOR_GRASS);
+            }
+            if (last_y < 115 && last_x > 180) {
+                tft.fillCircle(210, 90, 25, TREE_COLOR_LEAF);
+                tft.fillCircle(200, 85, 4, TREE_COLOR_FLOWER);
+                tft.fillCircle(220, 100, 4, TREE_COLOR_FLOWER);
+                tft.fillCircle(200, 100, 8, TREE_COLOR_PEACH);
+            }
+
+            // Draw at new position
+            tft.fillCircle(current_x, current_y, 8, TREE_COLOR_PEACH);
+            last_peach_y = current_y;
+            last_peach_x = current_x;
+        }
+    }
+
+    last_p = p;
+    if (percent >= 100) {
+        // Draw graceful completion text so user knows it is rebooting
+        tft.fillRoundRect(20, 20, 280, 80, 8, getBgColor());
+        tft.drawRoundRect(20, 20, 280, 80, 8, COLOR_PEACH);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(COLOR_PEACH);
+        tft.drawString("UPDATE COMPLETE", 160, 45, 4);
+        tft.setTextColor(getTextColor());
+        tft.drawString("Rebooting...", 160, 75, 2);
+        
+        last_p = -1.0; // Reset state mapping
+    }
+    lastPercent = percent;
 }
 
 void LCD_setMessage(const char *msg) {

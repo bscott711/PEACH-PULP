@@ -22,7 +22,7 @@ void LCD_task(void *parameter) {
       // Serial.printf("[LCD_TASK] heartbeat #%lu\n", loopCount);
     }
 
-    // Wait until next interval mark
-    vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(interval));
+    // Wait until next interval mark (use vTaskDelay instead of vTaskDelayUntil to guarantee yield to OTA task)
+    vTaskDelay(pdMS_TO_TICKS(interval));
   }
 }
