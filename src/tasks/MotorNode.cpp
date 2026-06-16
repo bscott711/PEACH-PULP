@@ -153,40 +153,6 @@ void MotorNode::hwUpdate() {
         // Update position based on velocity
         float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
         currentPosition += deltaPos;
-        
-        // SOFTWARE LIMITS TEMPORARILY DISABLED FOR DIAGNOSTICS
-        /*
-        // Calculate effective bottom limit
-        bool effectiveBotSet = limitSet[0];
-        float effectiveLimBot = limits[0];
-        
-        // Bottom limit check with deceleration zone
-        if (effectiveBotSet && targetSpeed < 0) {
-            float distToBot = currentPosition - effectiveLimBot;
-            if (distToBot <= 0.0f) {
-                targetSpeed = 0;
-                LCD_setMessage("Bottom Reached");
-            } else if (distToBot < 5.0f) {
-                int minSpeed = 1000;
-                int maxSpeed = abs(targetSpeed);
-                if (maxSpeed > minSpeed) {
-                    int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f));
-                    targetSpeed = -scaledSpeed;
-                }
-            }
-        }
-        
-        // Top limit check
-        if (limitSet[2] && currentPosition >= limits[2] && targetSpeed > 0) {
-            targetSpeed = 0;
-            LCD_setMessage("Top Reached");
-        }
-        
-        // Home position hard stop
-        if (isHomed && currentPosition <= 0.0f && targetSpeed < 0) {
-            targetSpeed = 0;
-        }
-        */
     }
     
     // Apply speed command to driver ONLY on change to avoid flooding the shared half-duplex UART bus

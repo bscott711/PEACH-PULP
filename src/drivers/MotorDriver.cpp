@@ -7,6 +7,7 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
 
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
+  driver.disableAnalogCurrentScaling();
 
   driver.disableCoolStep();
   driver.enableStealthChop();

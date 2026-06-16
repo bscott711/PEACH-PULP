@@ -35,6 +35,8 @@ void initSystemState() {
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.mode = IDLE;
     systemState.collisionDetected = false;
+    systemState.motor1StopTick = 0;
+    systemState.motor2StopTick = 0;
     xSemaphoreGive(systemStateMutex);
   }
 }
@@ -55,6 +57,20 @@ void controller_task(void *pvParameters) {
   while (1) {
     // Touch processing was moved to LCD_task to prevent TFT_eSPI SPI bus corruption
     
+    // Check timers for timed runs
+    if (systemState.motor1Running && systemState.motor1StopTick != 0) {
+        if (xTaskGetTickCount() >= systemState.motor1StopTick) {
+            systemState.motor1Running = false;
+            systemState.motor1StopTick = 0;
+        }
+    }
+    if (systemState.motor2Running && systemState.motor2StopTick != 0) {
+        if (xTaskGetTickCount() >= systemState.motor2StopTick) {
+            systemState.motor2Running = false;
+            systemState.motor2StopTick = 0;
+        }
+    }
+
     // Apply speed commands to motors
     int m1Target = systemState.motor1Running ? systemState.motor1SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
     int m2Target = systemState.motor2Running ? systemState.motor2SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;

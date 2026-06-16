@@ -58,7 +58,7 @@ void drawThemeIcon() {}
 void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
   int halfW = width / 2;
   int startX = centerX - halfW;
-  int targetX = centerX + (setpoint * halfW) / 10;
+  int targetX = centerX + (setpoint * halfW) / 20;
   uint16_t bg = getBgColor();
   
   // Clear speed bar region cleanly
@@ -115,129 +115,190 @@ void drawOTAScreen(int percent) {
     if (percent == lastPercent) return;
     
     static float last_p = -1.0;
-    static int last_peach_y = 80;
-    static int last_peach_x = 190;
+    static int last_peach_y = 85;
+    static int last_peach_x = 195;
 
     float p = (float)percent / 100.0f;
     p = constrainFloat(p, 0.0, 1.0);
 
-    // RGB565 Colors (Standard, no inversion)
-    uint16_t TREE_COLOR_SKY = tft.color565(135, 206, 235);
-    uint16_t TREE_COLOR_GRASS = tft.color565(34, 139, 34);
-    uint16_t TREE_COLOR_TRUNK = tft.color565(101, 67, 33);
-    uint16_t TREE_COLOR_LEAF = tft.color565(34, 139, 34);
-    uint16_t TREE_COLOR_FLOWER = tft.color565(255, 182, 193);
-    uint16_t TREE_COLOR_PEACH = tft.color565(255, 140, 0);
+    // Corrected Colors: Added ~ back to handle hardware inversion. 
+    // The RGB values are now standard so the final displayed colors are correct.
+    uint16_t TREE_COLOR_SKY   = ~tft.color565(135, 206, 250); // LightSkyBlue
+    uint16_t TREE_COLOR_GRASS = ~tft.color565(34, 139, 34);   // ForestGreen
+    uint16_t TREE_COLOR_TRUNK = ~tft.color565(139, 69, 19);   // SaddleBrown
+    uint16_t TREE_COLOR_LEAF  = ~tft.color565(50, 205, 50);   // LimeGreen
+    uint16_t TREE_COLOR_FLOWER= ~tft.color565(255, 182, 193); // LightPink
+    uint16_t TREE_COLOR_PEACH = ~tft.color565(255, 218, 185); // PeachPuff
 
     // Initial background generation
     if (last_p < 0.0 || p < last_p) {
         tft.fillScreen(TREE_COLOR_SKY);
         tft.fillRect(0, 200, 320, 40, TREE_COLOR_GRASS);
         last_p = 0.0;
-        last_peach_y = 80;
-        last_peach_x = 190;
+        last_peach_y = 85;
+        last_peach_x = 195;
     }
+
+    // Lambda to draw the entire static tree. 
+    // We use this to perfectly restore the background when the peach moves, eliminating flicker.
+    auto drawStaticTree = [&]() {
+        // Trunk
+        tft.fillTriangle(150, 200, 170, 200, 155, 120, TREE_COLOR_TRUNK);
+        tft.fillTriangle(170, 200, 155, 120, 165, 120, TREE_COLOR_TRUNK);
+        
+        // Limbs
+        auto drawThickLine = [&](int x0, int y0, int x1, int y1, int thickness, uint16_t color) {
+            float dx = x1 - x0;
+            float dy = y1 - y0;
+            float dist = sqrtf(dx*dx + dy*dy);
+            if (dist == 0) return;
+            float nx = -dy / dist * (thickness / 2.0f);
+            float ny = dx / dist * (thickness / 2.0f);
+            tft.fillTriangle(x0 + nx, y0 + ny, x0 - nx, y0 - ny, x1 + nx, y1 + ny, color);
+            tft.fillTriangle(x0 - nx, y0 - ny, x1 - nx, y1 - ny, x1 + nx, y1 + ny, color);
+        };
+        drawThickLine(155, 140, 115, 100, 4, TREE_COLOR_TRUNK);
+        drawThickLine(165, 130, 215, 85, 4, TREE_COLOR_TRUNK);
+        drawThickLine(160, 120, 160, 70, 4, TREE_COLOR_TRUNK);
+
+        // Leaves
+        tft.fillCircle(120, 110, 25, TREE_COLOR_LEAF);
+        tft.fillCircle(200, 100, 25, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 70, 30, TREE_COLOR_LEAF);
+        tft.fillCircle(140, 85, 27, TREE_COLOR_LEAF);
+        tft.fillCircle(180, 80, 27, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 105, 29, TREE_COLOR_LEAF);
+        tft.fillCircle(130, 95, 25, TREE_COLOR_LEAF);
+        tft.fillCircle(190, 90, 25, TREE_COLOR_LEAF);
+
+        // Flowers
+        tft.fillCircle(115, 105, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(135, 115, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(150, 80, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(175, 70, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(195, 85, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(210, 105, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(165, 115, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(145, 95, 4, TREE_COLOR_FLOWER);
+        tft.fillCircle(185, 100, 4, TREE_COLOR_FLOWER);
+        
+        // Static Peaches
+        tft.fillCircle(125, 115, 8, TREE_COLOR_PEACH);
+        tft.fillCircle(185, 105, 8, TREE_COLOR_PEACH);
+        
+        // Grass (redraw to cover any trunk overlap)
+        tft.fillRect(0, 200, 320, 40, TREE_COLOR_GRASS);
+    };
 
     // 1. Trunk (0% - 15%)
     float trunk_p = constrainFloat((p - 0.0) / 0.15, 0.0, 1.0);
-    if (trunk_p > 0) {
+    if (trunk_p > 0 && p < 0.85) {
         int h = trunk_p * 80;
-        tft.fillRect(150, 200 - h, 20, h, TREE_COLOR_TRUNK);
+        int top_y = 200 - h;
+        tft.fillTriangle(150, 200, 170, 200, 155, top_y, TREE_COLOR_TRUNK);
+        tft.fillTriangle(170, 200, 155, top_y, 165, top_y, TREE_COLOR_TRUNK);
     }
 
     // 2. Limbs (15% - 30%)
     float limb_p = constrainFloat((p - 0.15) / 0.15, 0.0, 1.0);
-    if (limb_p > 0) {
-        int endX1 = 160 - (limb_p * 40);
-        int endY1 = 150 - (limb_p * 50);
-        tft.drawLine(160, 150, endX1, endY1, TREE_COLOR_TRUNK);
-        tft.drawLine(159, 150, endX1 - 1, endY1, TREE_COLOR_TRUNK);
+    if (limb_p > 0 && p < 0.85) {
+        auto drawThickLine = [&](int x0, int y0, int x1, int y1, int thickness, uint16_t color) {
+            float dx = x1 - x0;
+            float dy = y1 - y0;
+            float dist = sqrtf(dx*dx + dy*dy);
+            if (dist == 0) return;
+            float nx = -dy / dist * (thickness / 2.0f);
+            float ny = dx / dist * (thickness / 2.0f);
+            tft.fillTriangle(x0 + nx, y0 + ny, x0 - nx, y0 - ny, x1 + nx, y1 + ny, color);
+            tft.fillTriangle(x0 - nx, y0 - ny, x1 - nx, y1 - ny, x1 + nx, y1 + ny, color);
+        };
 
-        int endX2 = 160 + (limb_p * 50);
-        int endY2 = 140 - (limb_p * 50);
-        tft.drawLine(160, 140, endX2, endY2, TREE_COLOR_TRUNK);
-        tft.drawLine(161, 140, endX2 + 1, endY2, TREE_COLOR_TRUNK);
-
-        int endY3 = 120 - (limb_p * 60);
-        tft.drawLine(160, 120, 160, endY3, TREE_COLOR_TRUNK);
-        tft.drawLine(159, 120, 159, endY3, TREE_COLOR_TRUNK);
-        tft.drawLine(161, 120, 161, endY3, TREE_COLOR_TRUNK);
+        int endX1 = 160 - (limb_p * 45);
+        int endY1 = 140 - (limb_p * 40);
+        drawThickLine(155, 140, endX1, endY1, 4, TREE_COLOR_TRUNK);
+        
+        int endX2 = 160 + (limb_p * 55);
+        int endY2 = 130 - (limb_p * 45);
+        drawThickLine(165, 130, endX2, endY2, 4, TREE_COLOR_TRUNK);
+        
+        int endY3 = 120 - (limb_p * 50);
+        drawThickLine(160, 120, 160, endY3, 4, TREE_COLOR_TRUNK);
     }
 
     // 3. Leaves (30% - 50%)
     float leaf_p = constrainFloat((p - 0.30) / 0.20, 0.0, 1.0);
-    if (leaf_p > 0) {
-        int r = leaf_p * 25;
-        tft.fillCircle(120, 100, r, TREE_COLOR_LEAF);
-        tft.fillCircle(210, 90, r, TREE_COLOR_LEAF);
-        tft.fillCircle(160, 60, r, TREE_COLOR_LEAF);
-        tft.fillCircle(160, 100, r + 5, TREE_COLOR_LEAF);
+    if (leaf_p > 0 && p < 0.85) {
+        int max_r = 25;
+        int r = leaf_p * max_r;
+        tft.fillCircle(120, 110, r, TREE_COLOR_LEAF);
+        tft.fillCircle(200, 100, r, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 70, r + 5, TREE_COLOR_LEAF);
+        tft.fillCircle(140, 85, r + 2, TREE_COLOR_LEAF);
+        tft.fillCircle(180, 80, r + 2, TREE_COLOR_LEAF);
+        tft.fillCircle(160, 105, r + 4, TREE_COLOR_LEAF);
+        tft.fillCircle(130, 95, r, TREE_COLOR_LEAF);
+        tft.fillCircle(190, 90, r, TREE_COLOR_LEAF);
     }
 
     // 4. Flowers (50% - 70%)
     float flower_p = constrainFloat((p - 0.50) / 0.20, 0.0, 1.0);
-    if (flower_p > 0) {
+    if (flower_p > 0 && p < 0.85) {
         int r = flower_p * 4;
-        tft.fillCircle(110, 95, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(130, 110, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(200, 85, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(220, 100, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(150, 55, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(170, 70, r, TREE_COLOR_FLOWER);
-        tft.fillCircle(160, 110, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(115, 105, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(135, 115, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(150, 80, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(175, 70, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(195, 85, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(210, 105, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(165, 115, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(145, 95, r, TREE_COLOR_FLOWER);
+        tft.fillCircle(185, 100, r, TREE_COLOR_FLOWER);
     }
 
     // 5. Peaches (70% - 85%)
     float peach_p = constrainFloat((p - 0.70) / 0.15, 0.0, 1.0);
-    if (peach_p > 0) {
+    if (peach_p > 0 && p < 0.85) {
         int r = peach_p * 8;
-        tft.fillCircle(110, 110, r, TREE_COLOR_PEACH);
-        tft.fillCircle(200, 100, r, TREE_COLOR_PEACH);
-        if (p <= 0.85) {
-            tft.fillCircle(190, 80, r, TREE_COLOR_PEACH); // Static prior to falling
-        }
+        tft.fillCircle(125, 115, r, TREE_COLOR_PEACH);
+        tft.fillCircle(185, 105, r, TREE_COLOR_PEACH);
+        tft.fillCircle(195, 85, r, TREE_COLOR_PEACH); // Static prior to falling
     }
 
     // 6. Falling Peach (85% - 100%)
     float fall_p = constrainFloat((p - 0.85) / 0.15, 0.0, 1.0);
     if (fall_p > 0) {
-        int current_y = 80;
-        int current_x = 190;
+        int current_y = 85;
+        int current_x = 195;
+        int ground_y = 192; // Lands exactly 8px above grass (radius is 8)
 
-        // Bounce physics
-        if (fall_p <= 0.5) {
-            float t = fall_p / 0.5;
-            current_y = 80 + (192 - 80) * (t * t);
-        } else if (fall_p <= 0.75) {
-            float t = (fall_p - 0.5) / 0.25;
-            current_y = 168 * ((t - 0.5) * (t - 0.5)) + 150;
-            current_x = 190 + (t * 15);
+        // Realistic gravity and bounce physics
+        if (fall_p <= 0.6) {
+            float t = fall_p / 0.6;
+            current_y = 85 + (ground_y - 85) * (t * t);
+        } else if (fall_p <= 0.8) {
+            float t = (fall_p - 0.6) / 0.2;
+            current_y = 120 * (t - 0.5) * (t - 0.5) + (ground_y - 30);
+            current_x = 195 + t * 20;
         } else {
-            float t = (fall_p - 0.75) / 0.25;
-            current_y = 88 * ((t - 0.5) * (t - 0.5)) + 170;
-            current_x = 205 + (t * 10);
+            float t = (fall_p - 0.8) / 0.2;
+            current_y = 40 * (t - 0.5) * (t - 0.5) + (ground_y - 10);
+            current_x = 215 + t * 15;
         }
 
         int last_x = last_peach_x;
         int last_y = last_peach_y;
 
         if (current_y != last_y || current_x != last_x) {
-            // Erase previous bounding box
-            tft.fillRect(last_x - 8, last_y - 8, 17, 17, TREE_COLOR_SKY);
+            // 1. Erase previous peach with sky color
+            tft.fillRect(last_x - 9, last_y - 9, 18, 18, TREE_COLOR_SKY);
             
-            // Redraw grass and leaf overlaps if necessary
-            if (last_y + 8 >= 200) {
-                tft.fillRect(last_x - 8, 200, 17, (last_y + 8) - 199, TREE_COLOR_GRASS);
-            }
-            if (last_y < 115 && last_x > 180) {
-                tft.fillCircle(210, 90, 25, TREE_COLOR_LEAF);
-                tft.fillCircle(200, 85, 4, TREE_COLOR_FLOWER);
-                tft.fillCircle(220, 100, 4, TREE_COLOR_FLOWER);
-                tft.fillCircle(200, 100, 8, TREE_COLOR_PEACH);
-            }
-
-            // Draw at new position
+            // 2. Redraw the entire static tree to perfectly restore the background
+            // This eliminates any flickering or "holes" left by the erase rect
+            drawStaticTree();
+            
+            // 3. Draw peach at new position
             tft.fillCircle(current_x, current_y, 8, TREE_COLOR_PEACH);
+            
             last_peach_y = current_y;
             last_peach_x = current_x;
         }
@@ -277,27 +338,29 @@ static int pressedButtonId = 0;
 
 void executeButtonAction(int buttonId) {
   if (buttonId == 1) {
-    systemState.motor1SpeedSetpoint = std::max(-10, systemState.motor1SpeedSetpoint - 1);
+    systemState.motor1SpeedSetpoint = std::max(-20, systemState.motor1SpeedSetpoint - 1);
     LCD_setMessage("M1 Speed -");
   }
   else if (buttonId == 2) {
-    systemState.motor1SpeedSetpoint = std::min(10, systemState.motor1SpeedSetpoint + 1);
+    systemState.motor1SpeedSetpoint = std::min(20, systemState.motor1SpeedSetpoint + 1);
     LCD_setMessage("M1 Speed +");
   }
   else if (buttonId == 3) {
     systemState.motor1Running = !systemState.motor1Running;
+    if (!systemState.motor1Running) systemState.motor1StopTick = 0; // Clear timer if stopped
     LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
   }
   else if (buttonId == 4) {
-    systemState.motor2SpeedSetpoint = std::max(-10, systemState.motor2SpeedSetpoint - 1);
+    systemState.motor2SpeedSetpoint = std::max(-20, systemState.motor2SpeedSetpoint - 1);
     LCD_setMessage("M2 Speed -");
   }
   else if (buttonId == 5) {
-    systemState.motor2SpeedSetpoint = std::min(10, systemState.motor2SpeedSetpoint + 1);
+    systemState.motor2SpeedSetpoint = std::min(20, systemState.motor2SpeedSetpoint + 1);
     LCD_setMessage("M2 Speed +");
   }
   else if (buttonId == 6) {
     systemState.motor2Running = !systemState.motor2Running;
+    if (!systemState.motor2Running) systemState.motor2StopTick = 0; // Clear timer if stopped
     LCD_setMessage(systemState.motor2Running ? "M2 Started" : "M2 Stopped");
   }
   else if (buttonId == 7) {
@@ -308,7 +371,19 @@ void executeButtonAction(int buttonId) {
   else if (buttonId == 8) {
     systemState.motor1Running = false;
     systemState.motor2Running = false;
+    systemState.motor1StopTick = 0;
+    systemState.motor2StopTick = 0;
     LCD_setMessage("All Stopped");
+  }
+  else if (buttonId == 12) {
+    systemState.motor1Running = true;
+    systemState.motor1StopTick = xTaskGetTickCount() + pdMS_TO_TICKS(60000);
+    LCD_setMessage("M1 Run 1m");
+  }
+  else if (buttonId == 13) {
+    systemState.motor2Running = true;
+    systemState.motor2StopTick = xTaskGetTickCount() + pdMS_TO_TICKS(60000);
+    LCD_setMessage("M2 Run 1m");
   }
   // Theme Toggling removed
 }
@@ -316,16 +391,16 @@ void executeButtonAction(int buttonId) {
 void handleSliderTouch(int sliderId, int t_x) {
   if (sliderId == 10) {
     int dx = t_x - 80;
-    int rawSetpoint = (dx * 10) / 70;
-    int setpoint = std::max(-10, std::min(10, rawSetpoint));
+    int rawSetpoint = (dx * 20) / 70;
+    int setpoint = std::max(-20, std::min(20, rawSetpoint));
     if (systemState.motor1SpeedSetpoint != setpoint) {
       systemState.motor1SpeedSetpoint = setpoint;
       LCD_setMessage("M1 Speed Set");
     }
   } else if (sliderId == 11) {
     int dx = t_x - 240;
-    int rawSetpoint = (dx * 10) / 70;
-    int setpoint = std::max(-10, std::min(10, rawSetpoint));
+    int rawSetpoint = (dx * 20) / 70;
+    int setpoint = std::max(-20, std::min(20, rawSetpoint));
     if (systemState.motor2SpeedSetpoint != setpoint) {
       systemState.motor2SpeedSetpoint = setpoint;
       LCD_setMessage("M2 Speed Set");
@@ -345,6 +420,7 @@ void process_touch() {
   uint16_t raw_x = 0, raw_y = 0;
   int currentButtonId = 0;
   uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  static uint16_t last_t_x = 0;
 
   if (isTouched) {
     TS_Point p = touchscreen.getPoint();
@@ -358,17 +434,20 @@ void process_touch() {
     // Clamp to screen boundaries
     t_x = std::max((uint16_t)0, std::min((uint16_t)320, t_x));
     t_y = std::max((uint16_t)0, std::min((uint16_t)240, t_y));
+    last_t_x = t_x;
 
     // Touch capturing: if dragging a slider, lock focus on it
     if (heldButtonId == 10 || heldButtonId == 11) {
       currentButtonId = heldButtonId;
     } else {
       // Determine if we are touching a button
-      if (isPointInRect(t_x, t_y, 10, 60, 60, 40))         currentButtonId = 1; // M1 -
-      else if (isPointInRect(t_x, t_y, 90, 60, 60, 40))    currentButtonId = 2; // M1 +
+      if (isPointInRect(t_x, t_y, 10, 60, 45, 40))         currentButtonId = 1; // M1 -
+      else if (isPointInRect(t_x, t_y, 60, 60, 45, 40))    currentButtonId = 2; // M1 +
+      else if (isPointInRect(t_x, t_y, 110, 60, 45, 40))   currentButtonId = 12; // M1 1m
       else if (isPointInRect(t_x, t_y, 10, 110, 140, 40))  currentButtonId = 3; // M1 Toggle
-      else if (isPointInRect(t_x, t_y, 170, 60, 60, 40))   currentButtonId = 4; // M2 -
-      else if (isPointInRect(t_x, t_y, 250, 60, 60, 40))   currentButtonId = 5; // M2 +
+      else if (isPointInRect(t_x, t_y, 170, 60, 45, 40))   currentButtonId = 4; // M2 -
+      else if (isPointInRect(t_x, t_y, 220, 60, 45, 40))   currentButtonId = 5; // M2 +
+      else if (isPointInRect(t_x, t_y, 270, 60, 45, 40))   currentButtonId = 13; // M2 1m
       else if (isPointInRect(t_x, t_y, 170, 110, 140, 40)) currentButtonId = 6; // M2 Toggle
       else if (isPointInRect(t_x, t_y, 10, 165, 145, 40))  currentButtonId = 7; // START ALL
       else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
@@ -389,15 +468,15 @@ void process_touch() {
   }
 
   // Update pressedButtonId for visual feedback (glow effect, hide on sliders)
-  pressedButtonId = (activeButtonId < 10) ? activeButtonId : 0;
+  pressedButtonId = (activeButtonId != 10 && activeButtonId != 11) ? activeButtonId : 0;
 
   if (activeButtonId != 0) {
     if (activeButtonId != heldButtonId) {
       heldButtonId = activeButtonId;
       touchStartTime = now;
       lastRepeatTime = now;
-      if (activeButtonId >= 10) {
-        handleSliderTouch(activeButtonId, t_x);
+      if (activeButtonId == 10 || activeButtonId == 11) {
+        handleSliderTouch(activeButtonId, last_t_x);
       } else {
         executeButtonAction(activeButtonId);
       }
@@ -410,8 +489,8 @@ void process_touch() {
             lastRepeatTime = now;
           }
         }
-      } else if (activeButtonId >= 10) {
-        handleSliderTouch(activeButtonId, t_x);
+      } else if (activeButtonId == 10 || activeButtonId == 11) {
+        handleSliderTouch(activeButtonId, last_t_x);
       }
     }
   } else {
@@ -452,13 +531,9 @@ void drawButton(int x, int y, int w, int h, const char* label, bool isActive, bo
   tft.fillRoundRect(x, y, w, h, 4, fillColor);
   tft.drawRoundRect(x, y, w, h, 4, borderColor);
 
-  // Draw label with a padding string to clear old text cleanly
-  char paddedLabel[16];
-  snprintf(paddedLabel, sizeof(paddedLabel), " %-8s ", label);
-
   tft.setTextColor(textColor, fillColor);
   tft.setTextDatum(MC_DATUM);
-  tft.drawString(paddedLabel, x + w/2, y + h/2, 2);
+  tft.drawString(label, x + w/2, y + h/2, 2);
 }
 
 static void drawButtonIfChanged(int buttonId, int x, int y, int w, int h, const char* label, bool isActive, bool lastActive, bool firstDraw, int pressedButtonId, int lastPressedButtonId) {
@@ -503,8 +578,8 @@ void draw_menu() {
     
     tft.setTextColor(getMutedColor(), getBgColor());
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("MOTOR 1", 80, 5, 2);
-    tft.drawString("MOTOR 2", 240, 5, 2);
+    tft.drawString("Sample", 80, 5, 2);
+    tft.drawString("Sheath", 240, 5, 2);
     tft.drawFastVLine(160, 30, 125, getBorderColor()); // Starts below title, goes down to horizontal line
     tft.drawFastHLine(0, 155, 320, getBorderColor());
     
@@ -546,14 +621,20 @@ void draw_menu() {
   }
 
   // 3. Buttons M1
-  drawButtonIfChanged(1, 10, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
-  drawButtonIfChanged(2, 90, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
-  drawButtonIfChanged(3, 10, 110, 140, 40, systemState.motor1Running ? "STOP M1" : "START M1", systemState.motor1Running, lastMotor1Running, firstDraw, pressedButtonId, lastPressedButtonId);
+  static bool lastM1Timed = false;
+  bool m1Timed = systemState.motor1Running && (systemState.motor1StopTick != 0);
+  drawButtonIfChanged(1, 10, 60, 45, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(2, 60, 60, 45, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(12, 110, 60, 45, 40, "1m", m1Timed, lastM1Timed, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(3, 10, 110, 140, 40, systemState.motor1Running ? "STOP SAMPLE" : "START SAMPLE", systemState.motor1Running, lastMotor1Running, firstDraw, pressedButtonId, lastPressedButtonId);
 
   // 4. Buttons M2
-  drawButtonIfChanged(4, 170, 60, 60, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
-  drawButtonIfChanged(5, 250, 60, 60, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
-  drawButtonIfChanged(6, 170, 110, 140, 40, systemState.motor2Running ? "STOP M2" : "START M2", systemState.motor2Running, lastMotor2Running, firstDraw, pressedButtonId, lastPressedButtonId);
+  static bool lastM2Timed = false;
+  bool m2Timed = systemState.motor2Running && (systemState.motor2StopTick != 0);
+  drawButtonIfChanged(4, 170, 60, 45, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(5, 220, 60, 45, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(13, 270, 60, 45, 40, "1m", m2Timed, lastM2Timed, firstDraw, pressedButtonId, lastPressedButtonId);
+  drawButtonIfChanged(6, 170, 110, 140, 40, systemState.motor2Running ? "STOP SHEATH" : "START SHEATH", systemState.motor2Running, lastMotor2Running, firstDraw, pressedButtonId, lastPressedButtonId);
 
   // 5. Global Buttons
   drawButtonIfChanged(7, 10, 165, 145, 40, "START ALL", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
@@ -562,6 +643,8 @@ void draw_menu() {
   // Update cached states
   lastMotor1Running = systemState.motor1Running;
   lastMotor2Running = systemState.motor2Running;
+  lastM1Timed = m1Timed;
+  lastM2Timed = m2Timed;
   lastPressedButtonId = pressedButtonId;
 
   // 6. Message Banner (at bottom)

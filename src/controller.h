@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 // --- Configuration ---
-#define MOTOR_SPEED_SCALE_FACTOR 333
+#define MOTOR_SPEED_SCALE_FACTOR 166
 
 // --- Event Group Bits ---
 #define BIT_HOMING_REQUEST (1 << 0)
@@ -27,6 +27,10 @@ struct SystemState {
   int motor2SpeedSetpoint;
   bool motor1Running;
   bool motor2Running;
+
+  // Timed Run State
+  uint32_t motor1StopTick;
+  uint32_t motor2StopTick;
 };
 
 extern SystemState systemState;
