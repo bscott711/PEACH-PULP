@@ -78,7 +78,3 @@ TMC2209::Status motorDriver::getStatus() {
 TMC2209::GlobalStatus motorDriver::getGlobalStatus() {
   return driver.getGlobalStatus();
 }
-
-uint32_t motorDriver::readRegister(uint8_t reg) {
-  return driver.read(reg);
-}
