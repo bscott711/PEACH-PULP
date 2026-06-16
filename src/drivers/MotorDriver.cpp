@@ -3,24 +3,8 @@
 
 void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address, int rxPin, int txPin) {
-  // Replicate the exact steps from the successful diagnostic scan:
-  // 1. Force TX high to wake up the TMC2209 from standby
-  pinMode(txPin, OUTPUT);
-  digitalWrite(txPin, HIGH);
-  vTaskDelay(pdMS_TO_TICKS(50));
-
-  // 2. End and restart the serial to ensure a perfectly clean driver state
-  serial.end();
-  vTaskDelay(pdMS_TO_TICKS(10));
-  serial.begin(SERIAL_BAUD_RATE, SERIAL_8N1, rxPin, txPin);
-  vTaskDelay(pdMS_TO_TICKS(20));
-
-  // 3. Setup TMC2209 passing -1, -1 so the library doesn't mess with the GPIO matrix we just set up
+  // Setup TMC2209 passing -1, -1 so the library doesn't mess with the GPIO matrix globally set up in main.cpp
   driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
-
-  // IMPORTANT: Do NOT call pinMode() here — Serial1.begin() configures the matrix.
-  // We removed setReplyDelay(2) because PEACH_PIT and the diagnostic script don't use it,
-  // and it could be interfering with the driver's default communication timing.
 
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
 
@@ -81,4 +65,20 @@ bool motorDriver::isCommunicating() {
 
 uint8_t motorDriver::getVersion() {
   return driver.getVersion();
+}
+
+bool motorDriver::hardwareDisabled() {
+  return driver.hardwareDisabled();
+}
+
+TMC2209::Status motorDriver::getStatus() {
+  return driver.getStatus();
+}
+
+TMC2209::GlobalStatus motorDriver::getGlobalStatus() {
+  return driver.getGlobalStatus();
+}
+
+uint32_t motorDriver::readRegister(uint8_t reg) {
+  return driver.read(reg);
 }

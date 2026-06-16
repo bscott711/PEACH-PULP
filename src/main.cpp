@@ -63,6 +63,11 @@ void setup() {
   // USB serial for debug logging — safe since motors use Serial1 on GPIO 22/27
   Serial.begin(115200);
 
+  // Global wake up for TMC2209s on the shared bus
+  pinMode(UART_TX, OUTPUT);
+  digitalWrite(UART_TX, HIGH);
+  delay(50);
+
   // Pre-initialize Serial1 on CN1 pins in setup() context
   Serial1.begin(SERIAL_BAUD_RATE, SERIAL_8N1, UART_RX, UART_TX);
   delay(50);

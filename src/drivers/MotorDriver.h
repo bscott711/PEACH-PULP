@@ -24,6 +24,10 @@ public:
   bool isSetupAndCommunicating();
   bool isCommunicating();
   uint8_t getVersion();
+  bool hardwareDisabled();
+  TMC2209::Status getStatus();
+  TMC2209::GlobalStatus getGlobalStatus();
+  uint32_t readRegister(uint8_t reg);
 
 private:
   TMC2209 driver;

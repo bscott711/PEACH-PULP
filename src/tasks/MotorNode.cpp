@@ -37,42 +37,19 @@ void MotorNode::hwInit() {
         
         bool isComm = driver.isSetupAndCommunicating();
         if (!isComm) {
-            ESP_LOGE(TAG, "Motor %d failed at default address %d. Scanning alternate addresses...", (int)config.address + 1, (int)config.address);
+            ESP_LOGE(TAG, "Motor %d UART COMM FAILED at address %d!", (int)config.address + 1, (int)config.address);
             
-            // Scan other addresses cleanly by closing and re-opening serial
-            int foundAddr = -1;
-            for (int addr = 0; addr < 4; addr++) {
-                if (addr == (int)config.address) continue;
-                
-                vTaskDelay(pdMS_TO_TICKS(20));
-                driver.begin(*(config.serial), (TMC2209::SerialAddress)addr, config.rxPin, config.txPin);
-                
-                if (driver.isSetupAndCommunicating()) {
-                    foundAddr = addr;
-                    break;
-                }
-            }
-            
-            if (foundAddr != -1) {
-                ESP_LOGI(TAG, "Motor %d responded at Address %d!", (int)config.address + 1, foundAddr);
-                char buf[32];
-                snprintf(buf, sizeof(buf), "M%d FOUND AT ADDR %d", (int)config.address + 1, foundAddr);
-                LCD_setMessage(buf);
+            // Read raw chip diagnostics over the UART bus to display exactly what is happening
+            uint8_t ver = driver.getVersion();
+            char buf[32];
+            if (ver == 0x21) {
+                snprintf(buf, sizeof(buf), "M%d ERR: NOT SETUP (V:0x21)", (int)config.address + 1);
+            } else if (ver == 0x00 || ver == 0xFF) {
+                snprintf(buf, sizeof(buf), "M%d ERR: DEAD BUS (V:0x%02X)", (int)config.address + 1, ver);
             } else {
-                ESP_LOGE(TAG, "Motor %d UART COMM FAILED on all addresses!", (int)config.address + 1);
-                
-                // Read raw chip diagnostics over the UART bus to display exactly what is happening
-                uint8_t ver = driver.getVersion();
-                char buf[32];
-                if (ver == 0x21) {
-                    snprintf(buf, sizeof(buf), "M%d ERR: NOT SETUP (V:0x21)", (int)config.address + 1);
-                } else if (ver == 0x00 || ver == 0xFF) {
-                    snprintf(buf, sizeof(buf), "M%d ERR: DEAD BUS (V:0x%02X)", (int)config.address + 1, ver);
-                } else {
-                    snprintf(buf, sizeof(buf), "M%d ERR: BAD VER (V:0x%02X)", (int)config.address + 1, ver);
-                }
-                LCD_setMessage(buf);
+                snprintf(buf, sizeof(buf), "M%d ERR: BAD VER (V:0x%02X)", (int)config.address + 1, ver);
             }
+            LCD_setMessage(buf);
         } else {
             ESP_LOGI(TAG, "Motor %d UART COMM OK at address %d", (int)config.address + 1, (int)config.address);
             char buf[32];
@@ -177,16 +154,46 @@ void MotorNode::hwUpdate() {
         float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
         currentPosition += deltaPos;
         
+        // SOFTWARE LIMITS TEMPORARILY DISABLED FOR DIAGNOSTICS
+        /*
+        // Calculate effective bottom limit
+        bool effectiveBotSet = limitSet[0];
+        float effectiveLimBot = limits[0];
+        
+        // Bottom limit check with deceleration zone
+        if (effectiveBotSet && targetSpeed < 0) {
+            float distToBot = currentPosition - effectiveLimBot;
+            if (distToBot <= 0.0f) {
+                targetSpeed = 0;
+                LCD_setMessage("Bottom Reached");
+            } else if (distToBot < 5.0f) {
+                int minSpeed = 1000;
+                int maxSpeed = abs(targetSpeed);
+                if (maxSpeed > minSpeed) {
+                    int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f));
+                    targetSpeed = -scaledSpeed;
+                }
+            }
+        }
+        
+        // Top limit check
+        if (limitSet[2] && currentPosition >= limits[2] && targetSpeed > 0) {
+            targetSpeed = 0;
+            LCD_setMessage("Top Reached");
+        }
+        
         // Home position hard stop
         if (isHomed && currentPosition <= 0.0f && targetSpeed < 0) {
             targetSpeed = 0;
         }
+        */
     }
     
     // Apply speed command to driver ONLY on change to avoid flooding the shared half-duplex UART bus
     bool speedChanged = (targetSpeed != lastSentSpeed) || (motorLocked != lastSentLocked);
     if (speedChanged) {
         if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Motor Addr %d sending speed %d", (int)config.address, targetSpeed);
             if (motorLocked) {
                 driver.stop();
             } else {
