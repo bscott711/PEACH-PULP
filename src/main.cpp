@@ -7,6 +7,8 @@
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 #include <Preferences.h>
+#include <TJpg_Decoder.h>
+#include "ota_sprites.h"
 
 #define TFT_BL 21
 #define BACKLIGHT_CHANNEL 0
@@ -247,25 +249,13 @@ void drawSplashScreen() {
   tft.fillScreen(COLOR_BG);
   int w = tft.width();
   int h = tft.height();
-  int cx = w / 2;
-  int cy = h * 0.33;
 
-  tft.drawCircle(cx, cy, 32, COLOR_PEACH);
-  tft.drawCircle(cx, cy, 33, COLOR_PEACH); 
-  tft.fillCircle(cx, cy, 24, COLOR_PEACH_LIGHT); 
-  tft.fillCircle(cx + 12, cy, 14, COLOR_BG); 
+  // Draw the boot sprite (200x145) centered horizontally, near the top
+  int spriteX = (w - 200) / 2;
+  int spriteY = 10;
+  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot, ota_sprite_boot_len);
 
-  int textY = cy + 55;
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(0xFFFF); 
-  tft.drawString("PEACH PULP", cx + 2, textY + 2, 4);
-  tft.setTextColor(COLOR_PEACH); 
-  tft.drawString("PEACH PULP", cx, textY, 4);
-
-  int subY = textY + 25;
-  tft.setTextColor(COLOR_TEXT_MUTED);
-  tft.drawString("SYSTEM BOOTING", cx, subY, 2);
-
+  // The progress bar remains at the same location
   int barMaxWidth = (w > 240) ? 224 : 180;
   int barX = (w - barMaxWidth) / 2;
   int barY = h - 35;

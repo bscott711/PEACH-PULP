@@ -1,6 +1,7 @@
 #include "drivers/LCDDriver.h"
 #include "messaging.h"
 #include "ota_sprites.h"
+#include <TJpg_Decoder.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
@@ -84,7 +85,14 @@ void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
   tft.drawFastVLine(targetX, y - 1, 7, COLOR_GOLD);
 }
 
-
+// Callback for TJpg_Decoder
+bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+  if (y >= tft.height()) return 0;
+  // bitmap contains standard RGB565 from JPEG
+  // The pushImage function expects standard RGB565 and will handle swapping/inverting if setup correctly
+  tft.pushImage(x, y, w, h, bitmap);
+  return 1;
+}
 
 void LCDInit() {
   tft.begin();
@@ -97,13 +105,16 @@ void LCDInit() {
 
   tft.fillScreen(getBgColor());
   
+  // Initialize JPEG decoder
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setSwapBytes(true); // Needed for TFT_eSPI
+  TJpgDec.setCallback(tft_output);
+
   lcdMutex = xSemaphoreCreateMutex();
   if (lcdMutex == NULL) {
     ESP_LOGE("LCD", "Failed to create LCD string mutex");
   }
 }
-
-
 
 void drawOTAScreen(int percent) {
     static int lastPercent = -1;
@@ -125,8 +136,9 @@ void drawOTAScreen(int percent) {
     // Display dimensions
     const int screenW = 320;
     const int screenH = 240;
-    const int spriteX = (screenW - OTA_SPRITE_W) / 2; // Center horizontally
-    const int spriteY = 5; // Near top, leaving room for bar below
+    // Sprite is 320x232. Center it vertically.
+    const int spriteX = (screenW - OTA_SPRITE_W) / 2;
+    const int spriteY = (screenH - OTA_SPRITE_H) / 2;
 
     // Only redraw sprite when the frame actually changes
     if (frame != lastFrame) {
@@ -135,51 +147,15 @@ void drawOTAScreen(int percent) {
             tft.fillScreen(getBgColor());
         }
 
-        // Read the sprite pointer from PROGMEM pointer array
-        const uint16_t* spritePtr = (const uint16_t*)pgm_read_ptr(&ota_sprites[frame]);
-
-        // Push the sprite image to the display (swap=true since we pre-swapped bytes)
-        tft.pushImage(spriteX, spriteY, OTA_SPRITE_W, OTA_SPRITE_H, spritePtr);
+        // Decode JPEG and push to display
+        const uint8_t* spritePtr = (const uint8_t*)pgm_read_ptr(&ota_sprites[frame]);
+        uint32_t spriteLen = ota_sprite_lens[frame];
+        TJpgDec.drawJpg(spriteX, spriteY, spritePtr, spriteLen);
 
         lastFrame = frame;
     }
 
-    // --- Progress bar and text below the sprite ---
-    const int barX = 30;
-    const int barY = spriteY + OTA_SPRITE_H + 18; // Below sprite with spacing
-    const int barW = screenW - 60;
-    const int barH = 10;
-    const int barR = 4; // Corner radius
-
-    // Clear progress area
-    tft.fillRect(barX - 2, barY - 22, barW + 4, 50, getBgColor());
-
-    // Percentage label centered above bar
-    char pctBuf[16];
-    snprintf(pctBuf, sizeof(pctBuf), "Updating... %d%%", percent);
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(getTextColor(), getBgColor());
-    tft.drawString(pctBuf, screenW / 2, barY - 10, 2);
-
-    // Bar background track
-    tft.drawRoundRect(barX, barY, barW, barH, barR, getBorderColor());
-
-    // Filled portion
-    int fillW = (barW * percent) / 100;
-    if (fillW > 0) {
-        tft.fillRoundRect(barX, barY, fillW, barH, barR, COLOR_PEACH);
-    }
-
-    // Completion overlay
     if (percent >= 100) {
-        tft.fillRoundRect(20, 20, 280, 80, 8, getBgColor());
-        tft.drawRoundRect(20, 20, 280, 80, 8, COLOR_PEACH);
-        tft.setTextDatum(MC_DATUM);
-        tft.setTextColor(COLOR_PEACH);
-        tft.drawString("UPDATE COMPLETE", 160, 45, 4);
-        tft.setTextColor(getTextColor());
-        tft.drawString("Rebooting...", 160, 75, 2);
-
         lastPercent = -1; // Reset state for next OTA
         lastFrame = -1;
         return;
