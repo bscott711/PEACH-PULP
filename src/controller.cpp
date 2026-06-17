@@ -26,7 +26,9 @@ SystemState systemState = {.mode = IDLE,
                            .motor1SpeedSetpoint = 5,
                            .motor2SpeedSetpoint = 5,
                            .motor1Running = false,
-                           .motor2Running = false};
+                           .motor2Running = false,
+                           .motor1Enabled = true,
+                           .motor2Enabled = true};
 
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
@@ -37,6 +39,8 @@ void initSystemState() {
     systemState.collisionDetected = false;
     systemState.motor1StopTick = 0;
     systemState.motor2StopTick = 0;
+    systemState.motor1Enabled = true;
+    systemState.motor2Enabled = true;
     xSemaphoreGive(systemStateMutex);
   }
 }

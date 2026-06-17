@@ -14,6 +14,8 @@ public:
   void begin(HardwareSerial &serial, TMC2209::SerialAddress address, int rxPin, int txPin);
   void setVelocity(int newSpeed);
   void stop();
+  void enable();
+  void disable();
 
   // Replaced blocking homing with state machine hooks
   void setupHoming();

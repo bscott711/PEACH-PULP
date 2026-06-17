@@ -27,6 +27,8 @@ struct SystemState {
   int motor2SpeedSetpoint;
   bool motor1Running;
   bool motor2Running;
+  bool motor1Enabled;
+  bool motor2Enabled;
 
   // Timed Run State
   uint32_t motor1StopTick;

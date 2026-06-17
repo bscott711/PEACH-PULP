@@ -11,7 +11,8 @@ enum class MotorCmdAction {
     SET_SPEED,       // Set velocity (int steps/s)
     START_HOMING,    // Initiate homing sequence
     SET_SG_THRESHOLD,// Set StallGuard threshold
-    GET_STATE        // Request state (for telemetry response)
+    GET_STATE,       // Request state (for telemetry response)
+    SET_ENABLED      // Enable/disable motor output
 };
 
 struct MotorCommand {
@@ -26,6 +27,7 @@ struct MotorTelemetry {
     bool isHoming;         // Currently homing flag
     int sgThreshold;       // Current StallGuard threshold
     bool collisionDetected;// Collision flag
+    bool isEnabled;        // True if motor driver output is enabled
 };
 
 // Motor 1 Queues

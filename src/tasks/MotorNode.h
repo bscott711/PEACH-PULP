@@ -41,6 +41,7 @@ private:
     bool isHoming;
     bool collisionDetected;
     bool motorLocked;
+    bool isEnabled; // Output enabled state
     
     // StallGuard threshold
     int sgThreshold;
@@ -67,6 +68,7 @@ public:
     bool setSpeed(int speed);
     bool startHoming();
     bool setSGThreshold(int threshold);
+    bool setEnabled(bool enable);
     
     // Getters for state
     float getPosition() const { return currentPosition; }

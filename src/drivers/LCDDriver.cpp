@@ -1,7 +1,11 @@
 #include "drivers/LCDDriver.h"
 #include "messaging.h"
 #include "ota_sprites.h"
+#include "tasks/MotorNode.h"
 #include <TJpg_Decoder.h>
+
+extern MotorNode g_motor1Node;
+extern MotorNode g_motor2Node;
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
@@ -221,6 +225,18 @@ void executeButtonAction(int buttonId) {
     systemState.motor2StopTick = xTaskGetTickCount() + pdMS_TO_TICKS(60000);
     LCD_setMessage("M2 Run 1m");
   }
+  else if (buttonId == 14) {
+    systemState.motor1Enabled = !systemState.motor1Enabled;
+    g_motor1Node.setEnabled(systemState.motor1Enabled);
+    if (!systemState.motor1Enabled) systemState.motor1Running = false;
+    LCD_setMessage(systemState.motor1Enabled ? "M1 Power ON" : "M1 Power OFF");
+  }
+  else if (buttonId == 15) {
+    systemState.motor2Enabled = !systemState.motor2Enabled;
+    g_motor2Node.setEnabled(systemState.motor2Enabled);
+    if (!systemState.motor2Enabled) systemState.motor2Running = false;
+    LCD_setMessage(systemState.motor2Enabled ? "M2 Power ON" : "M2 Power OFF");
+  }
   // Theme Toggling removed
 }
 
@@ -289,6 +305,8 @@ void process_touch() {
       else if (isPointInRect(t_x, t_y, 165, 165, 145, 40)) currentButtonId = 8; // STOP ALL
       else if (isPointInRect(t_x, t_y, 10, 25, 140, 33))   currentButtonId = 10; // M1 Slider (y = 25 to 58)
       else if (isPointInRect(t_x, t_y, 170, 25, 140, 33))  currentButtonId = 11; // M2 Slider (y = 25 to 58)
+      else if (isPointInRect(t_x, t_y, 110, 2, 45, 20))    currentButtonId = 14; // M1 Power
+      else if (isPointInRect(t_x, t_y, 270, 2, 45, 20))    currentButtonId = 15; // M2 Power
     }
 
     if (currentButtonId != 0) {
@@ -385,6 +403,8 @@ void draw_menu() {
   static int lastMotor2Setpoint = -999;
   static bool lastMotor1Running = false;
   static bool lastMotor2Running = false;
+  static bool lastMotor1Enabled = true;
+  static bool lastMotor2Enabled = true;
   static int lastPressedButtonId = -1;
   static char lastLcdMsg[32] = "";
   static bool lastMsgVisible = false;
@@ -459,6 +479,7 @@ void draw_menu() {
   // 3. Buttons M1
   static bool lastM1Timed = false;
   bool m1Timed = systemState.motor1Running && (systemState.motor1StopTick != 0);
+  drawButtonIfChanged(14, 110, 2, 45, 20, systemState.motor1Enabled ? "PWR" : "OFF", systemState.motor1Enabled, lastMotor1Enabled, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(1, 10, 60, 45, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(2, 60, 60, 45, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(12, 110, 60, 45, 40, "1m", m1Timed, lastM1Timed, firstDraw, pressedButtonId, lastPressedButtonId);
@@ -467,6 +488,7 @@ void draw_menu() {
   // 4. Buttons M2
   static bool lastM2Timed = false;
   bool m2Timed = systemState.motor2Running && (systemState.motor2StopTick != 0);
+  drawButtonIfChanged(15, 270, 2, 45, 20, systemState.motor2Enabled ? "PWR" : "OFF", systemState.motor2Enabled, lastMotor2Enabled, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(4, 170, 60, 45, 40, "-", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(5, 220, 60, 45, 40, "+", false, false, firstDraw, pressedButtonId, lastPressedButtonId);
   drawButtonIfChanged(13, 270, 60, 45, 40, "1m", m2Timed, lastM2Timed, firstDraw, pressedButtonId, lastPressedButtonId);
@@ -479,6 +501,8 @@ void draw_menu() {
   // Update cached states
   lastMotor1Running = systemState.motor1Running;
   lastMotor2Running = systemState.motor2Running;
+  lastMotor1Enabled = systemState.motor1Enabled;
+  lastMotor2Enabled = systemState.motor2Enabled;
   lastM1Timed = m1Timed;
   lastM2Timed = m2Timed;
   lastPressedButtonId = pressedButtonId;

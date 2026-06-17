@@ -16,6 +16,7 @@ MotorNode::MotorNode(const MotorConfig& conf)
     , isHoming(false)
     , collisionDetected(false)
     , motorLocked(false)
+    , isEnabled(true)
     , sgThreshold(16)
     , homingStartTime(0) {
 }
@@ -89,6 +90,20 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             
         case MotorCmdAction::GET_STATE:
             // Telemetry will include state automatically
+            break;
+            
+        case MotorCmdAction::SET_ENABLED:
+            isEnabled = (cmd.value != 0.0f);
+            if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+                if (isEnabled) {
+                    driver.enable();
+                    ESP_LOGI(TAG, "Motor Addr %d output ENABLED", (int)config.address);
+                } else {
+                    driver.disable();
+                    ESP_LOGI(TAG, "Motor Addr %d output DISABLED", (int)config.address);
+                }
+                xSemaphoreGive(xUARTMutex);
+            }
             break;
     }
 }
@@ -189,6 +204,7 @@ MotorTelemetry MotorNode::generateTelemetry() {
     tel.isHoming = isHoming;
     tel.sgThreshold = sgThreshold;
     tel.collisionDetected = collisionDetected || motorLocked;
+    tel.isEnabled = isEnabled;
     return tel;
 }
 
@@ -210,5 +226,12 @@ bool MotorNode::setSGThreshold(int threshold) {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::SET_SG_THRESHOLD;
     cmd.value = (float)threshold;
+    return sendCommand(cmd);
+}
+
+bool MotorNode::setEnabled(bool enable) {
+    MotorCommand cmd;
+    cmd.action = MotorCmdAction::SET_ENABLED;
+    cmd.value = enable ? 1.0f : 0.0f;
     return sendCommand(cmd);
 }

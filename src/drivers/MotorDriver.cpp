@@ -35,6 +35,10 @@ void motorDriver::setVelocity(int newSpeed) {
 
 void motorDriver::stop() { driver.moveAtVelocity(0); }
 
+void motorDriver::enable() { driver.enable(); }
+
+void motorDriver::disable() { driver.disable(); }
+
 void motorDriver::setupHoming() {
   // Serial.println("Starting Hardware Sensorless Homing...");
 
