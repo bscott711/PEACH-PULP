@@ -58,7 +58,7 @@ void drawThemeIcon() {}
 void drawSpeedBar(int centerX, int y, int width, int setpoint, bool isRunning) {
   int halfW = width / 2;
   int startX = centerX - halfW;
-  int targetX = centerX + (setpoint * halfW) / 20;
+  int targetX = centerX + (setpoint * halfW) / 100;
   uint16_t bg = getBgColor();
   
   // Clear speed bar region cleanly
@@ -121,14 +121,14 @@ void drawOTAScreen(int percent) {
     float p = (float)percent / 100.0f;
     p = constrainFloat(p, 0.0, 1.0);
 
-    // Corrected Colors: Added ~ back to handle hardware inversion. 
-    // The RGB values are now standard so the final displayed colors are correct.
-    uint16_t TREE_COLOR_SKY   = ~tft.color565(135, 206, 250); // LightSkyBlue
-    uint16_t TREE_COLOR_GRASS = ~tft.color565(34, 139, 34);   // ForestGreen
-    uint16_t TREE_COLOR_TRUNK = ~tft.color565(139, 69, 19);   // SaddleBrown
-    uint16_t TREE_COLOR_LEAF  = ~tft.color565(50, 205, 50);   // LimeGreen
-    uint16_t TREE_COLOR_FLOWER= ~tft.color565(255, 182, 193); // LightPink
-    uint16_t TREE_COLOR_PEACH = ~tft.color565(255, 218, 185); // PeachPuff
+    // The CYD display hardware uses a BGR color format.
+    // To get accurate colors, we pass them as tft.color565(B, G, R).
+    uint16_t TREE_COLOR_SKY   = tft.color565(250, 206, 135); // LightSkyBlue (R=135, B=250)
+    uint16_t TREE_COLOR_GRASS = tft.color565(34, 139, 34);   // ForestGreen (R=34, B=34)
+    uint16_t TREE_COLOR_TRUNK = tft.color565(19, 69, 139);   // SaddleBrown (R=139, B=19)
+    uint16_t TREE_COLOR_LEAF  = tft.color565(50, 205, 50);   // LimeGreen (R=50, B=50)
+    uint16_t TREE_COLOR_FLOWER= tft.color565(193, 182, 255); // LightPink (R=255, B=193)
+    uint16_t TREE_COLOR_PEACH = tft.color565(185, 218, 255); // PeachPuff (R=255, B=185)
 
     // Initial background generation
     if (last_p < 0.0 || p < last_p) {
@@ -338,24 +338,20 @@ static int pressedButtonId = 0;
 
 void executeButtonAction(int buttonId) {
   if (buttonId == 1) {
-    systemState.motor1SpeedSetpoint = std::max(-20, systemState.motor1SpeedSetpoint - 1);
-    LCD_setMessage("M1 Speed -");
-  }
-  else if (buttonId == 2) {
-    systemState.motor1SpeedSetpoint = std::min(20, systemState.motor1SpeedSetpoint + 1);
-    LCD_setMessage("M1 Speed +");
-  }
-  else if (buttonId == 3) {
+    if (systemState.motor1SpeedSetpoint > -100) systemState.motor1SpeedSetpoint--;
+  } else if (buttonId == 2) {
+    if (systemState.motor1SpeedSetpoint < 100) systemState.motor1SpeedSetpoint++;
+  } else if (buttonId == 3) {
     systemState.motor1Running = !systemState.motor1Running;
     if (!systemState.motor1Running) systemState.motor1StopTick = 0; // Clear timer if stopped
     LCD_setMessage(systemState.motor1Running ? "M1 Started" : "M1 Stopped");
   }
   else if (buttonId == 4) {
-    systemState.motor2SpeedSetpoint = std::max(-20, systemState.motor2SpeedSetpoint - 1);
+    systemState.motor2SpeedSetpoint = std::max(-100, systemState.motor2SpeedSetpoint - 1);
     LCD_setMessage("M2 Speed -");
   }
   else if (buttonId == 5) {
-    systemState.motor2SpeedSetpoint = std::min(20, systemState.motor2SpeedSetpoint + 1);
+    systemState.motor2SpeedSetpoint = std::min(100, systemState.motor2SpeedSetpoint + 1);
     LCD_setMessage("M2 Speed +");
   }
   else if (buttonId == 6) {
@@ -391,16 +387,16 @@ void executeButtonAction(int buttonId) {
 void handleSliderTouch(int sliderId, int t_x) {
   if (sliderId == 10) {
     int dx = t_x - 80;
-    int rawSetpoint = (dx * 20) / 70;
-    int setpoint = std::max(-20, std::min(20, rawSetpoint));
+    int rawSetpoint = (dx * 100) / 70;
+    int setpoint = std::max(-100, std::min(100, rawSetpoint));
     if (systemState.motor1SpeedSetpoint != setpoint) {
       systemState.motor1SpeedSetpoint = setpoint;
       LCD_setMessage("M1 Speed Set");
     }
   } else if (sliderId == 11) {
     int dx = t_x - 240;
-    int rawSetpoint = (dx * 20) / 70;
-    int setpoint = std::max(-20, std::min(20, rawSetpoint));
+    int rawSetpoint = (dx * 100) / 70;
+    int setpoint = std::max(-100, std::min(100, rawSetpoint));
     if (systemState.motor2SpeedSetpoint != setpoint) {
       systemState.motor2SpeedSetpoint = setpoint;
       LCD_setMessage("M2 Speed Set");
@@ -647,22 +643,63 @@ void draw_menu() {
   lastM2Timed = m2Timed;
   lastPressedButtonId = pressedButtonId;
 
-  // 6. Message Banner (at bottom)
+  // 6. Message Banner & Timer (at bottom)
+  static char lastTimerStr[32] = "";
+  char timerStr[32] = "";
+  uint32_t now_ticks = xTaskGetTickCount();
+  
+  if (m1Timed || m2Timed) {
+    int t1 = 0, t2 = 0;
+    if (m1Timed && systemState.motor1StopTick > now_ticks) {
+        t1 = (systemState.motor1StopTick - now_ticks) * portTICK_PERIOD_MS / 1000;
+        t1 = std::max(0, 60 - t1);
+    } else if (m1Timed) {
+        t1 = 60;
+    }
+    
+    if (m2Timed && systemState.motor2StopTick > now_ticks) {
+        t2 = (systemState.motor2StopTick - now_ticks) * portTICK_PERIOD_MS / 1000;
+        t2 = std::max(0, 60 - t2);
+    } else if (m2Timed) {
+        t2 = 60;
+    }
+
+    if (m1Timed && m2Timed) {
+        snprintf(timerStr, sizeof(timerStr), "M1:%ds M2:%ds", t1, t2);
+    } else if (m1Timed) {
+        snprintf(timerStr, sizeof(timerStr), "Timer: %ds / 60s", t1);
+    } else {
+        snprintf(timerStr, sizeof(timerStr), "Timer: %ds / 60s", t2);
+    }
+  }
+
+  uint16_t bg = getBgColor();
+
+  // Left half: Message Banner
   if (firstDraw || isMsgVisible != lastMsgVisible || (isMsgVisible && strcmp(localMsg, lastLcdMsg) != 0)) {
-    uint16_t bg = getBgColor();
+    tft.fillRect(0, 215, 160, 25, bg); // Clear left half
     if (isMsgVisible) {
       tft.setTextColor(COLOR_PEACH, bg);
       tft.setTextDatum(ML_DATUM);
       char msgBuf[40];
-      snprintf(msgBuf, sizeof(msgBuf), "> %-20s", localMsg);
+      snprintf(msgBuf, sizeof(msgBuf), "> %s", localMsg);
       tft.drawString(msgBuf, 5, 227, 2);
       strcpy(lastLcdMsg, localMsg);
     } else {
-      // Clear banner if expired
-      tft.fillRect(0, 215, 320, 25, bg);
       lastLcdMsg[0] = '\0';
     }
     lastMsgVisible = isMsgVisible;
+  }
+
+  // Right half: Timer Display
+  if (firstDraw || strcmp(timerStr, lastTimerStr) != 0) {
+    tft.fillRect(160, 215, 160, 25, bg); // Clear right half
+    if (timerStr[0] != '\0') {
+      tft.setTextColor(COLOR_GOLD, bg);
+      tft.setTextDatum(MR_DATUM);
+      tft.drawString(timerStr, 315, 227, 2);
+    }
+    strcpy(lastTimerStr, timerStr);
   }
 
   firstDraw = false;

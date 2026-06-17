@@ -2,12 +2,12 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
-#include <freertos/semphr.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 #include <stdint.h>
 
 // --- Configuration ---
-#define MOTOR_SPEED_SCALE_FACTOR 166
+#define MOTOR_SPEED_SCALE_FACTOR 16.6 // Was 166 (0.4ml per minute)
 
 // --- Event Group Bits ---
 #define BIT_HOMING_REQUEST (1 << 0)
@@ -21,7 +21,7 @@ struct SystemState {
   DeviceMode mode;
   bool collisionDetected;
   uint32_t collisionTimestamp;
-  
+
   // UI State
   int motor1SpeedSetpoint;
   int motor2SpeedSetpoint;
