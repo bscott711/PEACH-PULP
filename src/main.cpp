@@ -84,11 +84,23 @@ void setup() {
   // Inits
   LCDInit();
   initBacklight();
+  
+  // Frame 0: Displayed during 500ms fade-in
   drawSplashScreen();
-  fadeBacklightTo(255, 800);
+  fadeBacklightTo(255, 500);
 
-  updateBootProgress(15, "Initializing system...");
+  int spriteX = (tft.width() - 200) / 2;
+  int spriteY = 10;
+
+  // Frame 1: Displayed for 500ms
+  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_1, ota_sprite_boot_len_1);
+  updateBootProgress(5, "Initializing system...");
   vTaskDelay(pdMS_TO_TICKS(500));
+
+  // Frame 2: Displayed for the remainder of boot
+  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_2, ota_sprite_boot_len_2);
+  updateBootProgress(15, "Starting modules...");
+  vTaskDelay(pdMS_TO_TICKS(200));
 
   updateBootProgress(18, "Connecting to WiFi...");
   
@@ -254,10 +266,10 @@ void drawSplashScreen() {
   int w = tft.width();
   int h = tft.height();
 
-  // Draw the boot sprite (200x145) centered horizontally, near the top
+  // Draw the first boot sprite (200x145) centered horizontally, near the top
   int spriteX = (w - 200) / 2;
   int spriteY = 10;
-  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot, ota_sprite_boot_len);
+  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_0, ota_sprite_boot_len_0);
 
   // The progress bar remains at the same location
   int barMaxWidth = (w > 240) ? 224 : 180;

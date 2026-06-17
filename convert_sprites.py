@@ -102,28 +102,33 @@ def main():
             f.write(f"  ota_sprite_len_{i},\n")
         f.write("};\n\n")
         
-        # Add a special boot sprite (frame 11 scaled to 200x145)
-        last_sprite_x = (COLS - 1) * (sprite_w + BORDER)
-        last_sprite_y = (ROWS - 1) * (sprite_h + BORDER)
-        boot_sprite = img.crop((last_sprite_x, last_sprite_y, last_sprite_x + sprite_w, last_sprite_y + sprite_h))
-        boot_sprite = boot_sprite.resize((200, 145), Image.LANCZOS)
-        r, g, b = boot_sprite.split()
-        boot_sprite = Image.merge("RGB", (b, g, r))
-        boot_sprite = ImageOps.invert(boot_sprite)
-        
-        boot_path = os.path.join(IMG_DIR, "boot.jpg")
-        boot_sprite.save(boot_path, format="JPEG", quality=JPEG_QUALITY)
-        
-        with open(boot_path, "rb") as f_boot:
-            boot_bytes = f_boot.read()
-        
-        f.write(f"// Special boot sprite (frame 11, 200x145)\n")
-        f.write(f"const uint32_t ota_sprite_boot_len = {len(boot_bytes)};\n")
-        f.write(f"const uint8_t ota_sprite_boot[] PROGMEM = {{\n")
-        for j in range(0, len(boot_bytes), 16):
-            line = ", ".join(f"0x{b:02X}" for b in boot_bytes[j:j+16])
-            f.write(f"  {line},\n")
-        f.write("};\n")
+        # Add special boot sprites for frames 4, 8, 11 (scaled to 200x145)
+        boot_frames = [4, 8, 11]
+        for i, f_idx in enumerate(boot_frames):
+            row = f_idx // COLS
+            col = f_idx % COLS
+            x = col * (sprite_w + BORDER)
+            y = row * (sprite_h + BORDER)
+            
+            boot_sprite = img.crop((x, y, x + sprite_w, y + sprite_h))
+            boot_sprite = boot_sprite.resize((200, 145), Image.LANCZOS)
+            r, g, b = boot_sprite.split()
+            boot_sprite = Image.merge("RGB", (b, g, r))
+            boot_sprite = ImageOps.invert(boot_sprite)
+            
+            boot_path = os.path.join(IMG_DIR, f"boot_{i}.jpg")
+            boot_sprite.save(boot_path, format="JPEG", quality=JPEG_QUALITY)
+            
+            with open(boot_path, "rb") as f_boot:
+                boot_bytes = f_boot.read()
+            
+            f.write(f"// Special boot sprite {i} (frame {f_idx}, 200x145)\n")
+            f.write(f"const uint32_t ota_sprite_boot_len_{i} = {len(boot_bytes)};\n")
+            f.write(f"const uint8_t ota_sprite_boot_{i}[] PROGMEM = {{\n")
+            for j in range(0, len(boot_bytes), 16):
+                line = ", ".join(f"0x{b:02X}" for b in boot_bytes[j:j+16])
+                f.write(f"  {line},\n")
+            f.write("};\n\n")
     
     print(f"\nGenerated {OUTPUT_HEADER}")
     print(f"Total JPEG binary data: {total_size:,} bytes ({total_size / 1024:.0f} KB)")
