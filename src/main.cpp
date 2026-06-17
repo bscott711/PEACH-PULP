@@ -59,6 +59,10 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
+  // Ensure backlight is completely off immediately on boot to hide garbage during soft resets
+  pinMode(TFT_BL, OUTPUT);
+  digitalWrite(TFT_BL, LOW);
+
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
 

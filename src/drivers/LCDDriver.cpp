@@ -155,11 +155,7 @@ void drawOTAScreen(int percent) {
         lastFrame = frame;
     }
 
-    if (percent >= 100) {
-        lastPercent = -1; // Reset state for next OTA
-        lastFrame = -1;
-        return;
-    }
+    // Removed the state reset block so the screen doesn't tear by continuously redrawing 100%
 
     lastPercent = percent;
 }
