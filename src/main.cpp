@@ -1,44 +1,18 @@
 #include "controller.h"
 #include "messaging.h"
-#include "tasks/LCD_task.h"
 #include "tasks/MotorNode.h"
-#include "drivers/LCDDriver.h"
+#include "HardwareConfig.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 #include <Preferences.h>
-#include <TJpg_Decoder.h>
-#include "ota_sprites.h"
-
-#define TFT_BL 21
-#define BACKLIGHT_CHANNEL 0
-
-// Premium Theme Colors (RGB565)
-const uint16_t COLOR_BG = 0xF7BE;          // Deep dark charcoal under inversion
-const uint16_t COLOR_PEACH = 0xFD67;       // Vibrant peach/orange (255, 110, 60)
-const uint16_t COLOR_PEACH_LIGHT = 0xFEB2; // Soft peach highlight (255, 150, 100)
-const uint16_t COLOR_TEXT_MUTED = 0x632C;  // Muted steel gray under inversion
-const uint16_t COLOR_TEXT_WHITE = 0x18C3;  // Soft white under inversion
-const uint16_t COLOR_BORDER = 0xC618;      // Subtle border gray under inversion
-
-// Forward declarations
-void initBacklight();
-void fadeBacklightTo(int targetBrightness, int durationMs);
-void drawSplashScreen();
-void updateBootProgress(int percent, String message);
-
-extern TaskHandle_t lcdTaskHandle;
-
-// Shared UART pins for TMC2209 (CYD CN1 Port - GPIO 22/27)
-#define UART_RX 22  // Swapped in software to match the new board wiring (was 27)
-#define UART_TX 27  // Swapped in software to match the new board wiring (was 22)
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
-    .serial = &Serial1, // Use Serial1 (UART1) — cleanly remaps pins unlike UART2 whose defaults (16/17) conflict with CYD RGB LED
+    .serial = &Serial1, // Use Serial1 (UART1)
     .address = TMC2209::SERIAL_ADDRESS_0,
-    .rxPin = UART_RX,
-    .txPin = UART_TX,
+    .rxPin = RXD1,
+    .txPin = TXD1,
     .nvsNamespace = "peach_m1"
 };
 
@@ -46,8 +20,8 @@ const MotorConfig motor1Config = {
 const MotorConfig motor2Config = {
     .serial = &Serial1, // Use Serial1 (UART1)
     .address = TMC2209::SERIAL_ADDRESS_1,
-    .rxPin = UART_RX,
-    .txPin = UART_TX,
+    .rxPin = RXD1,
+    .txPin = TXD1,
     .nvsNamespace = "peach_m2"
 };
 
@@ -59,51 +33,25 @@ volatile bool isOTA = false;
 volatile int otaProgress = 0;
 
 void setup() {
-  // Ensure backlight is completely off immediately on boot to hide garbage during soft resets
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, LOW);
-
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
 
-  // USB serial for debug logging — safe since motors use Serial1 on GPIO 22/27
+  // USB serial for debug logging — motors use Serial1 on the TMC UART pins
   Serial.begin(115200);
 
   // Global wake up for TMC2209s on the shared bus
-  pinMode(UART_TX, OUTPUT);
-  digitalWrite(UART_TX, HIGH);
+  pinMode(TXD1, OUTPUT);
+  digitalWrite(TXD1, HIGH);
   delay(50);
 
-  // Pre-initialize Serial1 on CN1 pins in setup() context
-  Serial1.begin(SERIAL_BAUD_RATE, SERIAL_8N1, UART_RX, UART_TX);
+  // Pre-initialize Serial1 in setup() context
+  Serial1.begin(SERIAL_BAUD_RATE, SERIAL_8N1, RXD1, TXD1);
   delay(50);
 
   // Initialize System State from NVS
   initSystemState();
 
-  // Inits
-  LCDInit();
-  initBacklight();
-  
-  // Frame 0: Displayed during 500ms fade-in
-  drawSplashScreen();
-  fadeBacklightTo(255, 500);
-
-  int spriteX = (tft.width() - 200) / 2;
-  int spriteY = 10;
-
-  // Frame 1: Displayed for 500ms
-  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_1, ota_sprite_boot_len_1);
-  updateBootProgress(5, "Initializing system...");
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  // Frame 2: Displayed for the remainder of boot
-  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_2, ota_sprite_boot_len_2);
-  updateBootProgress(15, "Starting modules...");
-  vTaskDelay(pdMS_TO_TICKS(200));
-
-  updateBootProgress(18, "Connecting to WiFi...");
-  
+  // --- WiFi (temporary inline block; moves to NetworkManager in Milestone 2) ---
   WiFi.mode(WIFI_STA);
   Preferences prefs;
   prefs.begin("wifi_pref", true); // Read-only mode
@@ -114,26 +62,22 @@ void setup() {
 
   if (lastSSID.length() > 0) {
     const char* pass = (lastSSID == "Chaos Capital") ? "bccbtscott" : "";
-    updateBootProgress(20, "Connecting to saved AP...");
     WiFi.begin(lastSSID.c_str(), pass);
-    
-    // Quick 2.5-second wait
+
     for (int i = 0; i < 25; i++) {
       if (WiFi.status() == WL_CONNECTED) {
         connected = true;
         break;
       }
-      updateBootProgress(20 + i, "Connecting to saved AP...");
       vTaskDelay(pdMS_TO_TICKS(100));
     }
   }
 
   if (!connected) {
-    updateBootProgress(45, "Scanning networks...");
     WiFi.disconnect(true);
     vTaskDelay(pdMS_TO_TICKS(100));
     WiFi.mode(WIFI_STA);
-    
+
     int n = WiFi.scanNetworks();
     String bestSSID = "";
     const char* bestPass = "";
@@ -158,62 +102,46 @@ void setup() {
     }
 
     if (bestSSID.length() > 0) {
-      updateBootProgress(55, "Connecting to " + bestSSID + "...");
       WiFi.begin(bestSSID.c_str(), bestPass);
-      
-      // Wait up to 5 seconds for connection
+
       for (int i = 0; i < 50; i++) {
         if (WiFi.status() == WL_CONNECTED) {
           connected = true;
-          
-          // Save to preferences
           prefs.begin("wifi_pref", false); // Read-write
           prefs.putString("last_ssid", bestSSID);
           prefs.end();
           break;
         }
-        updateBootProgress(55 + (i / 5), "Connecting to " + bestSSID + "...");
         vTaskDelay(pdMS_TO_TICKS(100));
       }
     }
   }
-  
+
   if (WiFi.status() == WL_CONNECTED) {
-    updateBootProgress(60, "WiFi Connected!");
+    ESP_LOGI("MAIN", "WiFi Connected!");
     if (MDNS.begin("peachpulp")) {
       ESP_LOGI("MAIN", "mDNS responder started: peachpulp.local");
-      updateBootProgress(70, "mDNS Active");
     }
     ArduinoOTA.setHostname("peachpulp");
-    
-    // Custom OTA Callbacks
+
     ArduinoOTA.onStart([&]() {
       isOTA = true;
       otaProgress = 0;
     });
-    
+
     ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
       otaProgress = (progress / (total / 100));
     });
-    
+
     ArduinoOTA.onEnd([&]() {
       otaProgress = 100;
     });
-    
-    ArduinoOTA.begin();
-    updateBootProgress(90, "OTA Listener Ready");
-  } else {
-    updateBootProgress(60, "WiFi Failed. Offline.");
-  }
-  
-  updateBootProgress(100, "System Starting...");
-  vTaskDelay(pdMS_TO_TICKS(500));
-  
-  // Clear screen before launching LCD Task UI
-  tft.fillScreen(COLOR_BG);
 
-  // Task Update Intervals
-  static int lcd_interval = TASK_REFRESH_LCD;
+    ArduinoOTA.begin();
+    ESP_LOGI("MAIN", "OTA Listener Ready");
+  } else {
+    ESP_LOGW("MAIN", "WiFi Failed. Offline.");
+  }
 
   // Elevate setup() to Priority 5 (higher than our tasks)
   vTaskPrioritySet(NULL, 5);
@@ -232,7 +160,6 @@ void setup() {
 
   // 3. Create Dependent Tasks
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
-  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, &lcdTaskHandle);
 
   // Restore setup() to Priority 1
   vTaskPrioritySet(NULL, 1);
@@ -241,61 +168,4 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
   vTaskDelay(pdMS_TO_TICKS(50));
-}
-
-// --- Boot UI Helper Implementations ---
-
-void initBacklight() {
-  ledcSetup(BACKLIGHT_CHANNEL, 5000, 8);
-  ledcAttachPin(TFT_BL, BACKLIGHT_CHANNEL);
-  ledcWrite(BACKLIGHT_CHANNEL, 0); 
-}
-
-void fadeBacklightTo(int targetBrightness, int durationMs) {
-  int steps = 30;
-  int stepDelay = durationMs / steps;
-  for (int i = 0; i <= steps; i++) {
-    int val = (targetBrightness * i) / steps;
-    ledcWrite(BACKLIGHT_CHANNEL, val);
-    vTaskDelay(pdMS_TO_TICKS(stepDelay));
-  }
-}
-
-void drawSplashScreen() {
-  tft.fillScreen(COLOR_BG);
-  int w = tft.width();
-  int h = tft.height();
-
-  // Draw the first boot sprite (200x145) centered horizontally, near the top
-  int spriteX = (w - 200) / 2;
-  int spriteY = 10;
-  TJpgDec.drawJpg(spriteX, spriteY, ota_sprite_boot_0, ota_sprite_boot_len_0);
-
-  // The progress bar remains at the same location
-  int barMaxWidth = (w > 240) ? 224 : 180;
-  int barX = (w - barMaxWidth) / 2;
-  int barY = h - 35;
-  tft.drawRoundRect(barX - 2, barY - 2, barMaxWidth + 4, 12, 4, COLOR_BORDER);
-}
-
-void updateBootProgress(int percent, String message) {
-  if (percent < 0) percent = 0;
-  if (percent > 100) percent = 100;
-
-  int w = tft.width();
-  int h = tft.height();
-  int cx = w / 2;
-  int barY = h - 35;
-
-  tft.fillRect(10, barY - 25, w - 20, 18, COLOR_BG);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(COLOR_TEXT_WHITE, COLOR_BG);
-  tft.drawString(message, cx, barY - 15, 1);
-
-  int barMaxWidth = (w > 240) ? 224 : 180;
-  int barX = (w - barMaxWidth) / 2;
-  int barWidth = (barMaxWidth * percent) / 100;
-  if (barWidth > 0) {
-    tft.fillRoundRect(barX, barY, barWidth, 8, 3, COLOR_PEACH);
-  }
 }
