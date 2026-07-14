@@ -12,16 +12,16 @@ void StorageManager::init() {
     }
 }
 
-void StorageManager::savePumpSpeed(int idx, int pct) {
+void StorageManager::savePumpSpeed(int idx, int steps) {
     char key[8];
     snprintf(key, sizeof(key), "spd%d", idx);
-    prefs.putInt(key, pct);
+    prefs.putInt(key, steps);
 }
 
-int StorageManager::loadPumpSpeed(int idx, int defaultPct) {
+int StorageManager::loadPumpSpeed(int idx, int defaultSteps) {
     char key[8];
     snprintf(key, sizeof(key), "spd%d", idx);
-    return prefs.getInt(key, defaultPct);
+    return prefs.getInt(key, defaultSteps);
 }
 
 void StorageManager::saveT1(uint32_t seconds) {

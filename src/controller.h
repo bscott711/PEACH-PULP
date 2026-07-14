@@ -9,11 +9,14 @@
 #include "core/SystemState.h"
 
 // --- Configuration ---
-#define MOTOR_SPEED_SCALE_FACTOR 16.6 // 0.4ml per minute per %
+#define PUMP_SPEED_MAX_STEPS 5000   // practical UI ceiling (motorDriver::setVelocity still hard-clamps at +/-MOTOR_MAX_SAFE_STEPS)
+#define PUMP_SPEED_DETENT 10        // steps/s per encoder detent
+#define PUMP_SPEED_DETENT_ACCEL 50  // steps/s per detent when spun fast
 
 // --- Event Group Bits ---
 #define BIT_AUTO_RUNNING (1 << 1)  // Two-phase protocol currently running
 #define BIT_ESTOP_REQUEST (1 << 3) // Cooperative abort request (menu or OTA interlock)
+#define BIT_SKIP_REQUEST (1 << 2)  // Manual skip to next phase (Enc3 short-press while running)
 
 extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;

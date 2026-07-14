@@ -18,7 +18,7 @@ const MotorConfig samplePumpConfig = {
     .address = TMC2209::SERIAL_ADDRESS_0,
     .rxPin = RXD1,
     .txPin = TXD1,
-    .name = "SMP"
+    .name = "SAMPLE"
 };
 
 // Dye Pump (TMC2209 address 1)
@@ -36,7 +36,7 @@ const MotorConfig washPumpConfig = {
     .address = TMC2209::SERIAL_ADDRESS_2,
     .rxPin = RXD1,
     .txPin = TXD1,
-    .name = "WSH"
+    .name = "WASH"
 };
 
 // Global Node instances (extern in controller.cpp)

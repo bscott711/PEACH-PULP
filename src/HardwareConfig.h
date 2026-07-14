@@ -44,6 +44,7 @@
 #define MOTOR_MAX_SAFE_STEPS 100000
 #define MOTOR_MAX_SAFE_ACCEL 4000
 #define RUN_CURRENT_PERCENT 100
+#define HOLD_CURRENT_PERCENT 70
 
 // ==========================================
 // Tracking & Integration Constants

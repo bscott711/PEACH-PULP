@@ -246,27 +246,41 @@ static void draw_wifiIndicator(bool connected) {
   }
 }
 
-static const char* kPumpLabels[NUM_PUMPS] = {"SMP", "DYE", "WSH"};
+static const char* kPumpLabels[NUM_PUMPS] = {"SAMPLE", "DYE", "WASH"};
 
 static void draw_pumpRow(int y, int idx, const UIData& data) {
-  char buf[24];
-  snprintf(buf, sizeof(buf), "%s %3d%% %s", kPumpLabels[idx], data.pumpSpeedPct[idx],
-           data.pumpRunning[idx] ? "RUN" : "---");
+  char buf[28];
+  const char* stateStr = !data.pumpEnabled[idx] ? "OFF" : (data.pumpRunning[idx] ? "RUN" : "---");
+  snprintf(buf, sizeof(buf), "%-6s %+5d %s", kPumpLabels[idx], data.pumpSpeedSteps[idx], stateStr);
   u8g2.drawStr(0, y, buf);
 }
 
 static void draw_menuRow(const UIData& data) {
-  char buf[32];
+  char buf[40];
   char t1Buf[14];
   char t2Buf[14];
   snprintf(t1Buf, sizeof(t1Buf), "T1:%lus", (unsigned long)data.t1S);
   snprintf(t2Buf, sizeof(t2Buf), "T2:%lus", (unsigned long)data.t2S);
 
   const char* startMarker = (data.menuSel == MENU_START) ? ">" : " ";
+  const char* motorsMarker = (data.menuSel == MENU_MOTORS) ? ">" : " ";
   const char* t1Marker = (data.menuSel == MENU_T1) ? (data.inEdit ? "*" : ">") : " ";
   const char* t2Marker = (data.menuSel == MENU_T2) ? (data.inEdit ? "*" : ">") : " ";
 
-  snprintf(buf, sizeof(buf), "%sSTART %s%s %s%s", startMarker, t1Marker, t1Buf, t2Marker, t2Buf);
+  snprintf(buf, sizeof(buf), "%sSTART %sMOTORS %s%s %s%s", startMarker, motorsMarker, t1Marker, t1Buf, t2Marker, t2Buf);
+  u8g2.drawStr(0, 47, buf);
+}
+
+// Motor power submenu: Enc3 rotates between the 3 pumps + BACK, short-press toggles.
+static void draw_motorSubmenuRow(const UIData& data) {
+  char buf[40];
+  char parts[NUM_PUMPS][12];
+  for (int i = 0; i < NUM_PUMPS; i++) {
+    const char* marker = (data.motorMenuSel == i) ? ">" : " ";
+    snprintf(parts[i], sizeof(parts[i]), "%s%s:%s", marker, kPumpLabels[i], data.pumpEnabled[i] ? "ON" : "OFF");
+  }
+  const char* backMarker = (data.motorMenuSel == NUM_PUMPS) ? ">" : " ";
+  snprintf(buf, sizeof(buf), "%s%s%s%sBACK", parts[0], parts[1], parts[2], backMarker);
   u8g2.drawStr(0, 47, buf);
 }
 
@@ -306,6 +320,8 @@ void draw_menu(const UIData& data) {
 
   if (data.phase != PROTO_IDLE) {
     draw_protocolRow(data);
+  } else if (data.inMotorMenu) {
+    draw_motorSubmenuRow(data);
   } else {
     draw_menuRow(data);
   }

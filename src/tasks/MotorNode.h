@@ -11,7 +11,7 @@ struct MotorConfig {
     TMC2209::SerialAddress address;
     int rxPin;
     int txPin;
-    const char* name; // Short label for logs/UI, e.g. "SMP", "DYE", "WSH"
+    const char* name; // Label for logs/UI, e.g. "SAMPLE", "DYE", "WASH"
 };
 
 /**

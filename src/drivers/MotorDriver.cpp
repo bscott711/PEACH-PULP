@@ -7,6 +7,10 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
 
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
+  // TMC2209::initialize() (inside driver.setup() above) zeroes IHOLD via its
+  // internal minimizeMotorCurrent() and never restores it, so without this
+  // call idle motors silently drop to 0% hold current a moment after boot.
+  driver.setHoldCurrent(HOLD_CURRENT_PERCENT);
   driver.disableAnalogCurrentScaling();
 
   driver.disableCoolStep();
