@@ -1,11 +1,22 @@
 #pragma once
+#include <Arduino.h>
+#include <U8g2lib.h>
+#include "HardwareConfig.h"
 
-// Milestone-1 placeholder: message mailbox only, no display yet.
-// Milestone 2 replaces this with the full U8g2/OLED-based driver ported
-// from PEACH_STEM (draw_menu, splash/OTA screens, etc.).
+// LCD Display Update Intervals (in ms)
+#define TASK_REFRESH_LCD 100
 
 // Helper to set a temporary message (call from any task)
 void LCD_setMessage(const char *msg);
 
 // Helper to notify LCD of a button press (for visual flash)
 void LCD_notifyButtonPress(int index);
+
+void LCDInit();
+
+// Milestone-2 placeholder: parameterless status screen. Milestone 5 replaces
+// this with draw_menu(const UIData&) — the real pump/protocol UI.
+void draw_menu();
+
+void draw_otaScreen();
+void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed);

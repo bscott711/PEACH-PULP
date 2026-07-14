@@ -1,11 +1,13 @@
 #include "controller.h"
 #include "messaging.h"
 #include "tasks/MotorNode.h"
+#include "tasks/LCD_task.h"
+#include "drivers/LCDDriver.h"
+#include "core/NetworkManager.h"
 #include "HardwareConfig.h"
-#include <WiFi.h>
-#include <ESPmDNS.h>
 #include <ArduinoOTA.h>
-#include <Preferences.h>
+
+extern TaskHandle_t lcdTaskHandle;
 
 // Configure Motor 1 (Address 0)
 const MotorConfig motor1Config = {
@@ -29,9 +31,6 @@ const MotorConfig motor2Config = {
 MotorNode g_motor1Node(motor1Config);
 MotorNode g_motor2Node(motor2Config);
 
-volatile bool isOTA = false;
-volatile int otaProgress = 0;
-
 void setup() {
   // Create shared UART mutex before starting motor tasks
   xUARTMutex = xSemaphoreCreateMutex();
@@ -51,97 +50,8 @@ void setup() {
   // Initialize System State from NVS
   initSystemState();
 
-  // --- WiFi (temporary inline block; moves to NetworkManager in Milestone 2) ---
-  WiFi.mode(WIFI_STA);
-  Preferences prefs;
-  prefs.begin("wifi_pref", true); // Read-only mode
-  String lastSSID = prefs.getString("last_ssid", "");
-  prefs.end();
-
-  bool connected = false;
-
-  if (lastSSID.length() > 0) {
-    const char* pass = (lastSSID == "Chaos Capital") ? "bccbtscott" : "";
-    WiFi.begin(lastSSID.c_str(), pass);
-
-    for (int i = 0; i < 25; i++) {
-      if (WiFi.status() == WL_CONNECTED) {
-        connected = true;
-        break;
-      }
-      vTaskDelay(pdMS_TO_TICKS(100));
-    }
-  }
-
-  if (!connected) {
-    WiFi.disconnect(true);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    WiFi.mode(WIFI_STA);
-
-    int n = WiFi.scanNetworks();
-    String bestSSID = "";
-    const char* bestPass = "";
-    int bestRSSI = -999;
-
-    for (int i = 0; i < n; i++) {
-      String ssid = WiFi.SSID(i);
-      int rssi = WiFi.RSSI(i);
-      if (ssid == "sdsmtopn") {
-        if (rssi > bestRSSI) {
-          bestSSID = "sdsmtopn";
-          bestPass = "";
-          bestRSSI = rssi;
-        }
-      } else if (ssid == "Chaos Capital") {
-        if (rssi > bestRSSI) {
-          bestSSID = "Chaos Capital";
-          bestPass = "bccbtscott";
-          bestRSSI = rssi;
-        }
-      }
-    }
-
-    if (bestSSID.length() > 0) {
-      WiFi.begin(bestSSID.c_str(), bestPass);
-
-      for (int i = 0; i < 50; i++) {
-        if (WiFi.status() == WL_CONNECTED) {
-          connected = true;
-          prefs.begin("wifi_pref", false); // Read-write
-          prefs.putString("last_ssid", bestSSID);
-          prefs.end();
-          break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(100));
-      }
-    }
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    ESP_LOGI("MAIN", "WiFi Connected!");
-    if (MDNS.begin("peachpulp")) {
-      ESP_LOGI("MAIN", "mDNS responder started: peachpulp.local");
-    }
-    ArduinoOTA.setHostname("peachpulp");
-
-    ArduinoOTA.onStart([&]() {
-      isOTA = true;
-      otaProgress = 0;
-    });
-
-    ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
-      otaProgress = (progress / (total / 100));
-    });
-
-    ArduinoOTA.onEnd([&]() {
-      otaProgress = 100;
-    });
-
-    ArduinoOTA.begin();
-    ESP_LOGI("MAIN", "OTA Listener Ready");
-  } else {
-    ESP_LOGW("MAIN", "WiFi Failed. Offline.");
-  }
+  LCDInit();              // OLED splash screen
+  NetworkManager::init(); // WiFi (NVS/scan), mDNS, OTA, log bridge
 
   // Elevate setup() to Priority 5 (higher than our tasks)
   vTaskPrioritySet(NULL, 5);
@@ -159,13 +69,15 @@ void setup() {
   motor2TelQueue = g_motor2Node.getTelQueue();
 
   // 3. Create Dependent Tasks
+  static int lcd_interval = TASK_REFRESH_LCD;
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
+  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, &lcdTaskHandle);
 
   // Restore setup() to Priority 1
   vTaskPrioritySet(NULL, 1);
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  NetworkManager::handle();
   vTaskDelay(pdMS_TO_TICKS(50));
 }
