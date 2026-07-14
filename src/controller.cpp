@@ -3,7 +3,9 @@
 #include "tasks/MotorNode.h"
 #include "core/InputManager.h"
 #include "core/StorageManager.h"
+#include "core/NetworkManager.h"
 #include "core/UIData.h"
+#include "drivers/LCDDriver.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -50,8 +52,10 @@ void initSystemState() {
     }
     systemState.t1Seconds = StorageManager::loadT1(60);
     systemState.t2Seconds = StorageManager::loadT2(30);
-    systemState.menuSel = MENU_T1;
+    systemState.menuSel = MENU_START;
     systemState.inEdit = false;
+    systemState.protocolPhase = PROTO_IDLE;
+    systemState.phaseEndTick = 0;
     xSemaphoreGive(systemStateMutex);
   }
 
@@ -78,32 +82,88 @@ void controller_task(void *pvParameters) {
   while (1) {
     InputManager::process();
 
-    int speedPct[NUM_PUMPS];
-    bool manualRun[NUM_PUMPS];
+    TickType_t now = xTaskGetTickCount();
+    bool estopRequested = (xEventGroupGetBits(controlEvents) & BIT_ESTOP_REQUEST) != 0;
+
+    UIData uiData = {};
+    int targetPct[NUM_PUMPS] = {0, 0, 0};
+    const char* phaseMessage = nullptr;
+
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      for (int i = 0; i < NUM_PUMPS; i++) {
-        speedPct[i] = systemState.pumpSpeedPct[i];
-        manualRun[i] = systemState.pumpManualRun[i];
+      // --- Two-phase protocol state machine ---
+      if (estopRequested && systemState.protocolPhase != PROTO_IDLE) {
+        systemState.protocolPhase = PROTO_IDLE;
+        phaseMessage = "PROTOCOL STOPPED";
+      } else if (systemState.protocolPhase == PROTO_PHASE1 && now >= systemState.phaseEndTick) {
+        systemState.protocolPhase = PROTO_PHASE2;
+        systemState.phaseEndTick = now + pdMS_TO_TICKS(systemState.t2Seconds * 1000);
+        phaseMessage = "PHASE 2: DYE+WASH";
+      } else if (systemState.protocolPhase == PROTO_PHASE2 && now >= systemState.phaseEndTick) {
+        systemState.protocolPhase = PROTO_IDLE;
+        phaseMessage = "PROTOCOL COMPLETE";
       }
+
+      // --- Compute per-pump targets for this cycle ---
+      switch (systemState.protocolPhase) {
+        case PROTO_PHASE1:
+          targetPct[PUMP_SAMPLE] = systemState.pumpSpeedPct[PUMP_SAMPLE];
+          targetPct[PUMP_DYE] = systemState.pumpSpeedPct[PUMP_DYE];
+          targetPct[PUMP_WASH] = 0;
+          break;
+        case PROTO_PHASE2:
+          targetPct[PUMP_SAMPLE] = 0;
+          targetPct[PUMP_DYE] = systemState.pumpSpeedPct[PUMP_DYE];
+          targetPct[PUMP_WASH] = systemState.pumpSpeedPct[PUMP_WASH];
+          break;
+        default: // PROTO_IDLE — manual per-pump run
+          for (int i = 0; i < NUM_PUMPS; i++) {
+            targetPct[i] = systemState.pumpManualRun[i] ? systemState.pumpSpeedPct[i] : 0;
+          }
+          break;
+      }
+
+      if (systemState.protocolPhase == PROTO_IDLE) {
+        xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);
+      }
+
+      // --- Snapshot for the LCD ---
+      for (int i = 0; i < NUM_PUMPS; i++) {
+        uiData.pumpSpeedPct[i] = systemState.pumpSpeedPct[i];
+        uiData.pumpRunning[i] = (targetPct[i] != 0);
+      }
+      uiData.t1S = systemState.t1Seconds;
+      uiData.t2S = systemState.t2Seconds;
+      uiData.menuSel = systemState.menuSel;
+      uiData.inEdit = systemState.inEdit;
+      uiData.phase = systemState.protocolPhase;
+      uiData.phaseRemainingS = (systemState.protocolPhase != PROTO_IDLE && now < systemState.phaseEndTick)
+                                   ? (uint32_t)((systemState.phaseEndTick - now) * portTICK_PERIOD_MS) / 1000
+                                   : 0;
+
       xSemaphoreGive(systemStateMutex);
     }
 
+    if (estopRequested) {
+      xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
+    }
+    if (phaseMessage != nullptr) {
+      LCD_setMessage(phaseMessage);
+    }
+
     // Apply speed commands to pumps (controller_task is the sole writer)
-    // TODO(M6): replace manualRun-only gating with the two-phase protocol.
     for (int i = 0; i < NUM_PUMPS; i++) {
-      int target = manualRun[i] ? (int)(speedPct[i] * MOTOR_SPEED_SCALE_FACTOR) : 0;
-      pumpNode(i)->setSpeed(target);
+      pumpNode(i)->setSpeed((int)(targetPct[i] * MOTOR_SPEED_SCALE_FACTOR));
     }
 
     // Debounced NVS persistence for pump speeds
-    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t nowMs = xTaskGetTickCount() * portTICK_PERIOD_MS;
     for (int i = 0; i < NUM_PUMPS; i++) {
-      if (speedPct[i] != lastSavedSpeed[i]) {
+      if (uiData.pumpSpeedPct[i] != lastSavedSpeed[i]) {
         if (speedDirtySince[i] == 0) {
-          speedDirtySince[i] = now;
-        } else if (now - speedDirtySince[i] >= SPEED_SAVE_DEBOUNCE_MS) {
-          StorageManager::savePumpSpeed(i, speedPct[i]);
-          lastSavedSpeed[i] = speedPct[i];
+          speedDirtySince[i] = nowMs;
+        } else if (nowMs - speedDirtySince[i] >= SPEED_SAVE_DEBOUNCE_MS) {
+          StorageManager::savePumpSpeed(i, uiData.pumpSpeedPct[i]);
+          lastSavedSpeed[i] = uiData.pumpSpeedPct[i];
           speedDirtySince[i] = 0;
         }
       } else {
@@ -112,8 +172,7 @@ void controller_task(void *pvParameters) {
     }
 
     // Publish UI snapshot
-    UIData uiData;
-    InputManager::populateUIData(uiData);
+    uiData.wifiConnected = NetworkManager::isConnected();
     if (lcdDataQueue != NULL) {
       xQueueOverwrite(lcdDataQueue, &uiData);
     }

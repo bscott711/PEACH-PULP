@@ -3,7 +3,6 @@
 #include "drivers/EncoderDriver.h"
 #include "drivers/LCDDriver.h"
 #include "core/StorageManager.h"
-#include "core/NetworkManager.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -70,12 +69,13 @@ void InputManager::handlePumpEncoder(int idx) {
 }
 
 // ============================================================================
-// Enc3 — menu navigation / value edit (T1, T2)
+// Enc3 — menu navigation / value edit (T1, T2) / protocol start-stop / E-STOP
 // ============================================================================
 void InputManager::handleMenuEncoder() {
   static int32_t lastPos = 0;
   int32_t delta = 0;
   bool shortPress = false;
+  bool longPress = false;
   bool doublePress = false;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -86,20 +86,34 @@ void InputManager::handleMenuEncoder() {
       shortPress = true;
       g_encoderState.buttonPressed[3] = false;
     }
+    if (g_encoderState.buttonLongPressed[3]) {
+      longPress = true;
+      g_encoderState.buttonLongPressed[3] = false;
+    }
     if (g_encoderState.buttonDoublePressed[3]) {
       doublePress = true;
       g_encoderState.buttonDoublePressed[3] = false;
     }
-    g_encoderState.buttonLongPressed[3] = false; // reserved for E-STOP (Milestone 6)
     xSemaphoreGive(encoderStateMutex);
   }
 
-  if (delta == 0 && !shortPress && !doublePress) return;
+  if (delta == 0 && !shortPress && !doublePress && !longPress) return;
 
   bool notify = false;
+  bool requestStart = false;
+  bool requestEstop = false;
   const char* message = nullptr;
 
+  // Long press: global E-STOP, regardless of menu/edit state.
+  if (longPress) {
+    requestEstop = true;
+    notify = true;
+    message = "E-STOP";
+  }
+
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    bool protocolRunning = (systemState.protocolPhase != PROTO_IDLE);
+
     if (systemState.inEdit) {
       if (delta != 0) {
         int32_t step = (abs((int)delta) >= 4) ? delta * 5 : delta;
@@ -124,9 +138,29 @@ void InputManager::handleMenuEncoder() {
         systemState.menuSel = (MenuItem)sel;
       }
       if (shortPress) {
-        systemState.inEdit = true;
-        notify = true;
-        message = "Editing...";
+        if (systemState.menuSel == MENU_START) {
+          if (protocolRunning) {
+            requestEstop = true;
+            notify = true;
+            message = "STOPPING...";
+          } else {
+            requestStart = true;
+            notify = true;
+            message = "PHASE 1: SAMPLE+DYE";
+          }
+        } else {
+          systemState.inEdit = true;
+          notify = true;
+          message = "Editing...";
+        }
+      }
+    }
+
+    if (requestStart) {
+      systemState.protocolPhase = PROTO_PHASE1;
+      systemState.phaseEndTick = xTaskGetTickCount() + pdMS_TO_TICKS(systemState.t1Seconds * 1000);
+      for (int i = 0; i < NUM_PUMPS; i++) {
+        systemState.pumpManualRun[i] = false;
       }
     }
 
@@ -142,26 +176,17 @@ void InputManager::handleMenuEncoder() {
     xSemaphoreGive(systemStateMutex);
   }
 
-  if (shortPress || doublePress) {
+  if (requestStart) {
+    xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+  }
+  if (requestEstop) {
+    xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+  }
+
+  if (shortPress || doublePress || longPress) {
     LCD_notifyButtonPress(3);
   }
   if (notify && message != nullptr) {
     LCD_setMessage(message);
   }
-}
-
-void InputManager::populateUIData(UIData& data) {
-  if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
-    for (int i = 0; i < NUM_PUMPS; i++) {
-      data.pumpSpeedPct[i] = systemState.pumpSpeedPct[i];
-      data.pumpRunning[i] = systemState.pumpManualRun[i];
-    }
-    data.t1S = systemState.t1Seconds;
-    data.t2S = systemState.t2Seconds;
-    data.menuSel = systemState.menuSel;
-    data.inEdit = systemState.inEdit;
-    xSemaphoreGive(systemStateMutex);
-  }
-
-  data.wifiConnected = NetworkManager::isConnected();
 }

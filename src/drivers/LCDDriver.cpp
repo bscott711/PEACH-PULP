@@ -257,10 +257,30 @@ static void draw_menuRow(const UIData& data) {
   snprintf(t1Buf, sizeof(t1Buf), "T1:%lus", (unsigned long)data.t1S);
   snprintf(t2Buf, sizeof(t2Buf), "T2:%lus", (unsigned long)data.t2S);
 
+  const char* startMarker = (data.menuSel == MENU_START) ? ">" : " ";
   const char* t1Marker = (data.menuSel == MENU_T1) ? (data.inEdit ? "*" : ">") : " ";
   const char* t2Marker = (data.menuSel == MENU_T2) ? (data.inEdit ? "*" : ">") : " ";
 
-  snprintf(buf, sizeof(buf), "%s%s  %s%s", t1Marker, t1Buf, t2Marker, t2Buf);
+  snprintf(buf, sizeof(buf), "%sSTART %s%s %s%s", startMarker, t1Marker, t1Buf, t2Marker, t2Buf);
+  u8g2.drawStr(0, 47, buf);
+}
+
+// Progress bar + mm:ss countdown for the currently running protocol phase.
+static void draw_protocolRow(const UIData& data) {
+  uint32_t total = (data.phase == PROTO_PHASE1) ? data.t1S : data.t2S;
+  uint32_t remaining = data.phaseRemainingS;
+  uint32_t elapsed = (total > remaining) ? (total - remaining) : 0;
+  int segs = (total > 0) ? (int)((elapsed * 10) / total) : 0;
+  segs = constrain(segs, 0, 10);
+
+  char bar[11];
+  for (int i = 0; i < 10; i++) bar[i] = (i < segs) ? '#' : '-';
+  bar[10] = '\0';
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "P%d %lu:%02lu [%s]",
+           (data.phase == PROTO_PHASE1) ? 1 : 2,
+           (unsigned long)(remaining / 60), (unsigned long)(remaining % 60), bar);
   u8g2.drawStr(0, 47, buf);
 }
 
@@ -279,7 +299,11 @@ void draw_menu(const UIData& data) {
   draw_pumpRow(34, PUMP_WASH, data);
   u8g2.drawHLine(0, 38, 128);
 
-  draw_menuRow(data);
+  if (data.phase != PROTO_IDLE) {
+    draw_protocolRow(data);
+  } else {
+    draw_menuRow(data);
+  }
   u8g2.drawHLine(0, 51, 128);
 
   draw_actionMessage();

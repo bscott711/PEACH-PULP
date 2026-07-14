@@ -5,6 +5,7 @@
 #include <ArduinoOTA.h>
 #include <Preferences.h>
 #include "messaging.h"
+#include "controller.h"
 #include "drivers/LCDDriver.h" // For draw_wifiStatus
 #include <esp_log.h>
 
@@ -52,12 +53,20 @@ static volatile int g_otaProgress = 0;
 static const char* g_otaStatus = "";
 static bool g_wifiConnected = false;
 
-// Motor safety interlock helper — stops all pumps immediately on OTA start.
+// Safety interlock — stops all pumps and aborts any running protocol on OTA start.
 static void stopAllPumps() {
     MotorCommand stop = {MotorCmdAction::SET_SPEED, 0.0f};
     if (samplePumpCmdQueue != NULL) xQueueSend(samplePumpCmdQueue, &stop, 0);
     if (dyePumpCmdQueue != NULL) xQueueSend(dyePumpCmdQueue, &stop, 0);
     if (washPumpCmdQueue != NULL) xQueueSend(washPumpCmdQueue, &stop, 0);
+
+    if (systemStateMutex != NULL && xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        systemState.protocolPhase = PROTO_IDLE;
+        xSemaphoreGive(systemStateMutex);
+    }
+    if (controlEvents != NULL) {
+        xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);
+    }
 }
 
 void NetworkManager::init() {
