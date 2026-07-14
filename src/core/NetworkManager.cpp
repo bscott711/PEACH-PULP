@@ -7,6 +7,7 @@
 #include "messaging.h"
 #include "controller.h"
 #include "drivers/LCDDriver.h" // For draw_wifiStatus
+#include "secrets.h"
 #include <esp_log.h>
 
 // WiFi Serial Bridge
@@ -82,7 +83,7 @@ void NetworkManager::init() {
   String triedSSID = lastSSID;
 
   if (lastSSID.length() > 0) {
-    const char* pass = (lastSSID == "Chaos Capital") ? "bccbtscott" : "";
+    const char* pass = (lastSSID == WIFI_SSID_2) ? WIFI_PASS_2 : WIFI_PASS_1;
     WiFi.begin(lastSSID.c_str(), pass);
 
     for (int i = 0; i < 25; i++) {
@@ -108,16 +109,16 @@ void NetworkManager::init() {
     for (int i = 0; i < n; i++) {
       String ssid = WiFi.SSID(i);
       int rssi = WiFi.RSSI(i);
-      if (ssid == "sdsmtopn") {
+      if (ssid == WIFI_SSID_1) {
         if (rssi > bestRSSI) {
-          bestSSID = "sdsmtopn";
-          bestPass = "";
+          bestSSID = WIFI_SSID_1;
+          bestPass = WIFI_PASS_1;
           bestRSSI = rssi;
         }
-      } else if (ssid == "Chaos Capital") {
+      } else if (ssid == WIFI_SSID_2) {
         if (rssi > bestRSSI) {
-          bestSSID = "Chaos Capital";
-          bestPass = "bccbtscott";
+          bestSSID = WIFI_SSID_2;
+          bestPass = WIFI_PASS_2;
           bestRSSI = rssi;
         }
       }
