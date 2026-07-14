@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include "HardwareConfig.h"
+#include "core/UIData.h"
 
 // LCD Display Update Intervals (in ms)
 #define TASK_REFRESH_LCD 100
@@ -13,10 +14,6 @@ void LCD_setMessage(const char *msg);
 void LCD_notifyButtonPress(int index);
 
 void LCDInit();
-
-// Milestone-2 placeholder: parameterless status screen. Milestone 5 replaces
-// this with draw_menu(const UIData&) — the real pump/protocol UI.
-void draw_menu();
-
+void draw_menu(const UIData& data);
 void draw_otaScreen();
 void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed);

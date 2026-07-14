@@ -5,6 +5,7 @@
 #include "tasks/encoder_task.h"
 #include "drivers/LCDDriver.h"
 #include "core/NetworkManager.h"
+#include "core/UIData.h"
 #include "HardwareConfig.h"
 #include <ArduinoOTA.h>
 #include <Wire.h>
@@ -87,6 +88,7 @@ void setup() {
   dyePumpTelQueue = g_dyePumpNode.getTelQueue();
   washPumpCmdQueue = g_washPumpNode.getCmdQueue();
   washPumpTelQueue = g_washPumpNode.getTelQueue();
+  lcdDataQueue = xQueueCreate(1, sizeof(UIData));
 
   // 3. Create Dependent Tasks
   static int lcd_interval = TASK_REFRESH_LCD;

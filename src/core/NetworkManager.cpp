@@ -258,3 +258,7 @@ int NetworkManager::getOTAProgress() {
 const char* NetworkManager::getOTAStatus() {
     return g_otaStatus;
 }
+
+bool NetworkManager::isConnected() {
+    return g_wifiConnected;
+}

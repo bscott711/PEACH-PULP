@@ -34,3 +34,6 @@ extern QueueHandle_t dyePumpTelQueue;
 // Wash Pump Queues (TMC2209 address 2)
 extern QueueHandle_t washPumpCmdQueue;
 extern QueueHandle_t washPumpTelQueue;
+
+// UI snapshot queue (depth-1 mailbox, controller -> LCD_task)
+extern QueueHandle_t lcdDataQueue;

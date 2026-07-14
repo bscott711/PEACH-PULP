@@ -1,4 +1,6 @@
 #include "tasks/LCD_task.h"
+#include "messaging.h"
+#include "core/UIData.h"
 #include "core/NetworkManager.h"
 
 TaskHandle_t lcdTaskHandle = NULL;
@@ -11,7 +13,10 @@ void LCD_task(void *parameter) {
     if (NetworkManager::isOTAActive()) {
       draw_otaScreen();
     } else {
-      draw_menu();
+      UIData uiData;
+      if (lcdDataQueue != NULL && xQueuePeek(lcdDataQueue, &uiData, pdMS_TO_TICKS(10)) == pdPASS) {
+        draw_menu(uiData);
+      }
     }
 
     // Wait until next interval mark

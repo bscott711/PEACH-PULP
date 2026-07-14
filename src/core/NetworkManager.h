@@ -9,6 +9,7 @@ public:
     static bool isOTAActive();
     static int getOTAProgress();
     static const char* getOTAStatus();
+    static bool isConnected();
 
     // Custom Logger to bypass Arduino Core hijacking of ESP_LOG
     static void logToWiFi(const char* level, const char* tag, const char* format, ...);

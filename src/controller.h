@@ -6,34 +6,14 @@
 #include <freertos/semphr.h>
 #include <stdint.h>
 
+#include "core/SystemState.h"
+
 // --- Configuration ---
-#define MOTOR_SPEED_SCALE_FACTOR 16.6 // Was 166 (0.4ml per minute)
+#define MOTOR_SPEED_SCALE_FACTOR 16.6 // 0.4ml per minute per %
 
 // --- Event Group Bits ---
-#define BIT_HOMING_REQUEST (1 << 0)
-#define BIT_AUTO_RUNNING (1 << 1)
-#define BIT_AUTO_RESUME (1 << 2)
-#define BIT_ESTOP_REQUEST (1 << 3)
-
-enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
-
-struct SystemState {
-  DeviceMode mode;
-  bool collisionDetected;
-  uint32_t collisionTimestamp;
-
-  // UI State
-  int motor1SpeedSetpoint;
-  int motor2SpeedSetpoint;
-  bool motor1Running;
-  bool motor2Running;
-  bool motor1Enabled;
-  bool motor2Enabled;
-
-  // Timed Run State
-  uint32_t motor1StopTick;
-  uint32_t motor2StopTick;
-};
+#define BIT_AUTO_RUNNING (1 << 1)  // Milestone 6: two-phase protocol running
+#define BIT_ESTOP_REQUEST (1 << 3) // Milestone 6: cooperative abort request
 
 extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;

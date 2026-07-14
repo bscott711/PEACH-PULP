@@ -235,20 +235,52 @@ static void draw_actionMessage() {
   }
 }
 
-// ============ Main Draw Function ============
-// Milestone-2 placeholder body. Milestone 5 replaces this with the real
-// pump-speed / protocol-countdown layout driven by UIData.
+static void draw_wifiIndicator(bool connected) {
+  if (connected) {
+    u8g2.drawStr(123, 6, "W");
+  }
+}
 
-void draw_menu() {
+static const char* kPumpLabels[NUM_PUMPS] = {"SMP", "DYE", "WSH"};
+
+static void draw_pumpRow(int y, int idx, const UIData& data) {
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%s %3d%% %s", kPumpLabels[idx], data.pumpSpeedPct[idx],
+           data.pumpRunning[idx] ? "RUN" : "---");
+  u8g2.drawStr(0, y, buf);
+}
+
+static void draw_menuRow(const UIData& data) {
+  char buf[32];
+  char t1Buf[14];
+  char t2Buf[14];
+  snprintf(t1Buf, sizeof(t1Buf), "T1:%lus", (unsigned long)data.t1S);
+  snprintf(t2Buf, sizeof(t2Buf), "T2:%lus", (unsigned long)data.t2S);
+
+  const char* t1Marker = (data.menuSel == MENU_T1) ? (data.inEdit ? "*" : ">") : " ";
+  const char* t2Marker = (data.menuSel == MENU_T2) ? (data.inEdit ? "*" : ">") : " ";
+
+  snprintf(buf, sizeof(buf), "%s%s  %s%s", t1Marker, t1Buf, t2Marker, t2Buf);
+  u8g2.drawStr(0, 47, buf);
+}
+
+// ============ Main Draw Function ============
+
+void draw_menu(const UIData& data) {
   u8g2.clearBuffer();
 
   draw_displayTimer();
   draw_buttonStatus();
-  u8g2.drawHLine(0, 10, 128);
+  draw_wifiIndicator(data.wifiConnected);
+  u8g2.drawHLine(0, 9, 128);
 
-  u8g2.drawStr(0, 30, "PEACH PULP");
-  u8g2.drawStr(0, 40, "System Ready");
-  u8g2.drawHLine(0, 46, 128);
+  draw_pumpRow(18, PUMP_SAMPLE, data);
+  draw_pumpRow(26, PUMP_DYE, data);
+  draw_pumpRow(34, PUMP_WASH, data);
+  u8g2.drawHLine(0, 38, 128);
+
+  draw_menuRow(data);
+  u8g2.drawHLine(0, 51, 128);
 
   draw_actionMessage();
 
