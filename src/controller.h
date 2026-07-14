@@ -41,10 +41,12 @@ extern SemaphoreHandle_t encoderStateMutex;
 extern EventGroupHandle_t controlEvents;
 
 // Queue handles declared in controller.cpp, extern here for access
-extern QueueHandle_t motor1CmdQueue;
-extern QueueHandle_t motor1TelQueue;
-extern QueueHandle_t motor2CmdQueue;
-extern QueueHandle_t motor2TelQueue;
+extern QueueHandle_t samplePumpCmdQueue;
+extern QueueHandle_t samplePumpTelQueue;
+extern QueueHandle_t dyePumpCmdQueue;
+extern QueueHandle_t dyePumpTelQueue;
+extern QueueHandle_t washPumpCmdQueue;
+extern QueueHandle_t washPumpTelQueue;
 
 void initSystemState();
 

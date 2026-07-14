@@ -8,14 +8,17 @@
 #include <algorithm>
 
 // Global queue handles (declared extern in controller.h)
-QueueHandle_t motor1CmdQueue;
-QueueHandle_t motor1TelQueue;
-QueueHandle_t motor2CmdQueue;
-QueueHandle_t motor2TelQueue;
+QueueHandle_t samplePumpCmdQueue;
+QueueHandle_t samplePumpTelQueue;
+QueueHandle_t dyePumpCmdQueue;
+QueueHandle_t dyePumpTelQueue;
+QueueHandle_t washPumpCmdQueue;
+QueueHandle_t washPumpTelQueue;
 
 // Global Node instances (defined in main.cpp, extern here)
-extern MotorNode g_motor1Node;
-extern MotorNode g_motor2Node;
+extern MotorNode g_samplePumpNode;
+extern MotorNode g_dyePumpNode;
+extern MotorNode g_washPumpNode;
 
 SemaphoreHandle_t systemStateMutex;
 SemaphoreHandle_t encoderStateMutex;
@@ -56,13 +59,8 @@ void initSystemState() {
 void controller_task(void *pvParameters) {
   TickType_t lastWakeTime = xTaskGetTickCount();
   const TickType_t CONTROLLER_INTERVAL = pdMS_TO_TICKS(50);
-  
-  bool wasTouched = false;
-  uint32_t lastTouchTime = 0;
 
   while (1) {
-    // Touch processing was moved to LCD_task to prevent TFT_eSPI SPI bus corruption
-    
     // Check timers for timed runs
     if (systemState.motor1Running && systemState.motor1StopTick != 0) {
         if (xTaskGetTickCount() >= systemState.motor1StopTick) {
@@ -77,12 +75,14 @@ void controller_task(void *pvParameters) {
         }
     }
 
-    // Apply speed commands to motors
-    int m1Target = systemState.motor1Running ? systemState.motor1SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
-    int m2Target = systemState.motor2Running ? systemState.motor2SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
-    
-    g_motor1Node.setSpeed(m1Target);
-    g_motor2Node.setSpeed(m2Target);
+    // Apply speed commands to pumps
+    // TODO(M5): replace with the pumpSpeedPct[3] / two-phase protocol model.
+    int sampleTarget = systemState.motor1Running ? systemState.motor1SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
+    int dyeTarget = systemState.motor2Running ? systemState.motor2SpeedSetpoint * MOTOR_SPEED_SCALE_FACTOR : 0;
+
+    g_samplePumpNode.setSpeed(sampleTarget);
+    g_dyePumpNode.setSpeed(dyeTarget);
+    g_washPumpNode.setSpeed(0);
 
     vTaskDelayUntil(&lastWakeTime, CONTROLLER_INTERVAL);
   }

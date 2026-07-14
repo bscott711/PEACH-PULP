@@ -52,12 +52,12 @@ static volatile int g_otaProgress = 0;
 static const char* g_otaStatus = "";
 static bool g_wifiConnected = false;
 
-// Motor safety interlock helper — stops both pumps immediately on OTA start.
-// TODO(M4): extend to the third (Wash) pump once it exists.
+// Motor safety interlock helper — stops all pumps immediately on OTA start.
 static void stopAllPumps() {
     MotorCommand stop = {MotorCmdAction::SET_SPEED, 0.0f};
-    if (motor1CmdQueue != NULL) xQueueSend(motor1CmdQueue, &stop, 0);
-    if (motor2CmdQueue != NULL) xQueueSend(motor2CmdQueue, &stop, 0);
+    if (samplePumpCmdQueue != NULL) xQueueSend(samplePumpCmdQueue, &stop, 0);
+    if (dyePumpCmdQueue != NULL) xQueueSend(dyePumpCmdQueue, &stop, 0);
+    if (washPumpCmdQueue != NULL) xQueueSend(washPumpCmdQueue, &stop, 0);
 }
 
 void NetworkManager::init() {

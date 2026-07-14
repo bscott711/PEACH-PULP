@@ -11,27 +11,37 @@
 
 extern TaskHandle_t lcdTaskHandle;
 
-// Configure Motor 1 (Address 0)
-const MotorConfig motor1Config = {
+// Sample Pump (TMC2209 address 0)
+const MotorConfig samplePumpConfig = {
     .serial = &Serial1, // Use Serial1 (UART1)
     .address = TMC2209::SERIAL_ADDRESS_0,
     .rxPin = RXD1,
     .txPin = TXD1,
-    .nvsNamespace = "peach_m1"
+    .name = "SMP"
 };
 
-// Configure Motor 2 (Address 1)
-const MotorConfig motor2Config = {
+// Dye Pump (TMC2209 address 1)
+const MotorConfig dyePumpConfig = {
     .serial = &Serial1, // Use Serial1 (UART1)
     .address = TMC2209::SERIAL_ADDRESS_1,
     .rxPin = RXD1,
     .txPin = TXD1,
-    .nvsNamespace = "peach_m2"
+    .name = "DYE"
+};
+
+// Wash Pump (TMC2209 address 2)
+const MotorConfig washPumpConfig = {
+    .serial = &Serial1, // Use Serial1 (UART1)
+    .address = TMC2209::SERIAL_ADDRESS_2,
+    .rxPin = RXD1,
+    .txPin = TXD1,
+    .name = "WSH"
 };
 
 // Global Node instances (extern in controller.cpp)
-MotorNode g_motor1Node(motor1Config);
-MotorNode g_motor2Node(motor2Config);
+MotorNode g_samplePumpNode(samplePumpConfig);
+MotorNode g_dyePumpNode(dyePumpConfig);
+MotorNode g_washPumpNode(washPumpConfig);
 
 void setup() {
   // Create shared UART mutex before starting motor tasks
@@ -63,16 +73,20 @@ void setup() {
   vTaskPrioritySet(NULL, 5);
 
   // 1. Start Active Motion Nodes
-  if (!g_motor1Node.start("Motor1Node", 4096, 2))
-    ESP_LOGE("MAIN", "Failed Motor1Node");
-  if (!g_motor2Node.start("Motor2Node", 4096, 2))
-    ESP_LOGE("MAIN", "Failed Motor2Node");
+  if (!g_samplePumpNode.start("SamplePump", 4096, 2))
+    ESP_LOGE("MAIN", "Failed SamplePump");
+  if (!g_dyePumpNode.start("DyePump", 4096, 2))
+    ESP_LOGE("MAIN", "Failed DyePump");
+  if (!g_washPumpNode.start("WashPump", 4096, 2))
+    ESP_LOGE("MAIN", "Failed WashPump");
 
   // 2. Link the global messaging queues
-  motor1CmdQueue = g_motor1Node.getCmdQueue();
-  motor1TelQueue = g_motor1Node.getTelQueue();
-  motor2CmdQueue = g_motor2Node.getCmdQueue();
-  motor2TelQueue = g_motor2Node.getTelQueue();
+  samplePumpCmdQueue = g_samplePumpNode.getCmdQueue();
+  samplePumpTelQueue = g_samplePumpNode.getTelQueue();
+  dyePumpCmdQueue = g_dyePumpNode.getCmdQueue();
+  dyePumpTelQueue = g_dyePumpNode.getTelQueue();
+  washPumpCmdQueue = g_washPumpNode.getCmdQueue();
+  washPumpTelQueue = g_washPumpNode.getTelQueue();
 
   // 3. Create Dependent Tasks
   static int lcd_interval = TASK_REFRESH_LCD;
