@@ -12,8 +12,8 @@
 #define MOTOR_SPEED_SCALE_FACTOR 16.6 // 0.4ml per minute per %
 
 // --- Event Group Bits ---
-#define BIT_AUTO_RUNNING (1 << 1)  // Milestone 6: two-phase protocol running
-#define BIT_ESTOP_REQUEST (1 << 3) // Milestone 6: cooperative abort request
+#define BIT_AUTO_RUNNING (1 << 1)  // Two-phase protocol currently running
+#define BIT_ESTOP_REQUEST (1 << 3) // Cooperative abort request (menu or OTA interlock)
 
 extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;

@@ -11,12 +11,17 @@
 
 /**
  * Mutex Lock Order Protocol (ALWAYS acquire in this order to prevent deadlock):
- * 1. lcdMutex          (LCD driver internal state message buffer)
- * 2. encoderStateMutex (g_encoderState - encoder input)
- * 3. systemStateMutex  (SystemState - UI-specific states ONLY)
+ * 1. lcdMutex          (LCD driver internal message/button-flash buffer)
+ * 2. encoderStateMutex (g_encoderState - raw encoder input, EncoderDriver.cpp)
+ * 3. systemStateMutex  (SystemState - pump speeds, protocol phase, menu state)
  * Rule: Never hold a "lower" mutex while waiting for a "higher" one.
  * Rule: Keep critical sections short; copy data to local vars before releasing.
- * Note: Motion subsystem state is read lock-free via telemetry queues.
+ *
+ * xUARTMutex (MotorNode/MotorDriver, guards the shared TMC2209 UART bus) is
+ * independent of the three above — it is only ever held around a TMC2209
+ * transaction inside MotorNode, never nested with lcdMutex/encoderStateMutex/
+ * systemStateMutex. controlEvents (BIT_AUTO_RUNNING/BIT_ESTOP_REQUEST) is a
+ * lock-free FreeRTOS event group and isn't part of this ordering either.
  */
 
 // Instantiation for our LCD screen
