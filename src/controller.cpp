@@ -18,6 +18,7 @@ extern MotorNode g_motor1Node;
 extern MotorNode g_motor2Node;
 
 SemaphoreHandle_t systemStateMutex;
+SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
@@ -32,6 +33,7 @@ SystemState systemState = {.mode = IDLE,
 
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
+  encoderStateMutex = xSemaphoreCreateMutex();
   controlEvents = xEventGroupCreate();
 
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {

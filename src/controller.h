@@ -37,6 +37,7 @@ struct SystemState {
 
 extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;
+extern SemaphoreHandle_t encoderStateMutex;
 extern EventGroupHandle_t controlEvents;
 
 // Queue handles declared in controller.cpp, extern here for access

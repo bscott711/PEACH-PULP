@@ -2,10 +2,12 @@
 #include "messaging.h"
 #include "tasks/MotorNode.h"
 #include "tasks/LCD_task.h"
+#include "tasks/encoder_task.h"
 #include "drivers/LCDDriver.h"
 #include "core/NetworkManager.h"
 #include "HardwareConfig.h"
 #include <ArduinoOTA.h>
+#include <Wire.h>
 
 extern TaskHandle_t lcdTaskHandle;
 
@@ -50,6 +52,10 @@ void setup() {
   // Initialize System State from NVS
   initSystemState();
 
+  // Start I2C line (used by the rotary encoders)
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+
+  encoderInit();
   LCDInit();              // OLED splash screen
   NetworkManager::init(); // WiFi (NVS/scan), mDNS, OTA, log bridge
 
@@ -70,6 +76,7 @@ void setup() {
 
   // 3. Create Dependent Tasks
   static int lcd_interval = TASK_REFRESH_LCD;
+  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
   xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, &lcdTaskHandle);
 
