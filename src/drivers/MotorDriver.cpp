@@ -30,9 +30,9 @@ void motorDriver::setVelocity(int newSpeed) {
   newSpeed = constrain(newSpeed, -MOTOR_MAX_SAFE_STEPS, MOTOR_MAX_SAFE_STEPS);
 
   if (newSpeed > 0) {
-    driver.disableInverseMotorDirection();
-  } else {
     driver.enableInverseMotorDirection();
+  } else {
+    driver.disableInverseMotorDirection();
   }
   driver.moveAtVelocity(abs(newSpeed));
 }
