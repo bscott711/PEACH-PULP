@@ -152,10 +152,10 @@ void NetworkManager::init() {
 
   g_wifiConnected = true;
   Serial.println("WiFi Connected!");
-  draw_wifiStatus("peachpulp.local", triedSSID.c_str(), 0, false);
+  draw_wifiStatus("peach-stem.local", triedSSID.c_str(), 0, false);
   delay(1000);
 
-  ArduinoOTA.setHostname("peachpulp");
+  ArduinoOTA.setHostname("peach-stem");
 
   ArduinoOTA
     .onStart([]() {
@@ -190,8 +190,8 @@ void NetworkManager::init() {
       else if (error == OTA_END_ERROR) g_otaStatus = "End Failed";
     });
 
-  if (MDNS.begin("peachpulp")) {
-    Serial.println("mDNS responder started: peachpulp.local");
+  if (MDNS.begin("peach-stem")) {
+    Serial.println("mDNS responder started: peach-stem.local");
   }
   ArduinoOTA.begin();
   Serial.println("OTA Ready");
@@ -220,7 +220,7 @@ void NetworkManager::handle() {
         if (!wifiSerialClient || !wifiSerialClient.connected()) {
             if (wifiSerialClient) wifiSerialClient.stop(); // Kick old client
             wifiSerialClient = wifiSerialServer.available();
-            wifiSerialClient.println("\n\n--- CONNECTED TO PEACHPULP WIFI SERIAL ---");
+            wifiSerialClient.println("\n\n--- CONNECTED TO PEACH-STEM WIFI SERIAL ---");
         } else {
             wifiSerialServer.available().stop(); // Reject if already connected
         }
