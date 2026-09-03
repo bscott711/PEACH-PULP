@@ -5,6 +5,7 @@
     python run.py --port /dev/ttyACM0   # real Octopus over USB
     python run.py                       # real, autodetect the port
     python run.py --fullscreen          # kiosk mode (the Pi touchscreen)
+    python run.py --light               # light theme (default is dark)
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ def main() -> int:
     ap.add_argument("--port", help="serial port (default: autodetect)")
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--fullscreen", action="store_true")
+    ap.add_argument("--light", action="store_true", help="light theme (default: dark)")
     ap.add_argument("--spares", action="store_true", help="also show spare pump slots 6-7")
     args = ap.parse_args()
 
@@ -25,15 +27,19 @@ def main() -> int:
 
     from peachpulp.app import MainWindow
     from peachpulp.link import SerialLink, SimLink
+    from peachpulp.theme import apply_theme
 
     app = QApplication(sys.argv)
+    app.setApplicationName("PEACH PULP")
+    apply_theme(app, dark=not args.light)
+
     link = SimLink() if args.sim else SerialLink(port=args.port, baud=args.baud)
     win = MainWindow(link, show_spares=args.spares)
 
     if args.fullscreen:
         win.showFullScreen()
     else:
-        win.resize(900, 680)
+        win.resize(1024, 600)
         win.show()
 
     link.start()

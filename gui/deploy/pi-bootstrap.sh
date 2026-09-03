@@ -78,6 +78,9 @@ Try it now:
   .venv/bin/python run.py --sim --fullscreen    # kiosk on the touchscreen
   .venv/bin/python run.py --port /dev/ttyACM0   # real Octopus (once it's flashed)
 
+Pull the latest later:
+  $REPO_DIR/gui/deploy/pi-update.sh
+
 Autostart on the touchscreen:
   sudo cp /tmp/peach-pulp-gui.service /etc/systemd/system/
   sudo systemctl enable --now peach-pulp-gui

@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -17,15 +18,6 @@ from PySide6.QtWidgets import (
 from . import protocol as P
 from .link import LinkBase
 from .widgets import PhasePanel, PumpRow
-
-_BTN_CSS = """
-QPushButton { font-size: 18px; font-weight: 700; padding: 14px; border-radius: 8px; }
-QPushButton#run    { background:#2ecc71; color:white; }
-QPushButton#skip   { background:#f39c12; color:white; }
-QPushButton#stop   { background:#7f8c8d; color:white; }
-QPushButton#estop  { background:#e74c3c; color:white; }
-QPushButton:disabled { background:#bdc3c7; color:#ecf0f1; }
-"""
 
 
 class MainWindow(QMainWindow):
@@ -36,26 +28,40 @@ class MainWindow(QMainWindow):
         self._last_telem: P.Telemetry | None = None
 
         central = QWidget()
+        central.setObjectName("central")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(12)
 
-        # --- status bar row ---
-        self._status = QLabel("○ disconnected")
-        self._status.setStyleSheet("font-size: 14px;")
-        top = QHBoxLayout()
+        # --- header ------------------------------------------------------
         title = QLabel("PEACH PULP")
-        title.setFont(QFont("", 20, QFont.Bold))
+        title.setObjectName("title")
+        self._status = QLabel("disconnected")
+        self._status.setObjectName("statusPill")
+        self._status.setProperty("connected", "false")
+        top = QHBoxLayout()
         top.addWidget(title)
         top.addStretch(1)
         top.addWidget(self._status)
         root.addLayout(top)
 
-        # --- pumps (left) + phases (right) ---
+        # --- pumps (left, scrollable) + phases (right) ------------------
         mid = QHBoxLayout()
-        pumps_box = QVBoxLayout()
-        pumps_box.addWidget(QLabel("<b>Pumps</b>"))
+        mid.setSpacing(14)
+
+        pumps_col = QVBoxLayout()
+        pumps_col.setSpacing(8)
+        pumps_hdr = QLabel("PUMPS")
+        pumps_hdr.setObjectName("sectionHeader")
+        pumps_col.addWidget(pumps_hdr)
+
         self._rows: list[PumpRow] = []
         count = P.NUM_PUMPS if show_spares else P.ACTIVE_PUMPS
+        rows_host = QWidget()
+        rows_v = QVBoxLayout(rows_host)
+        rows_v.setContentsMargins(0, 0, 0, 0)
+        rows_v.setSpacing(8)
         for i in range(count):
             row = PumpRow(i)
             row.speedChanged.connect(self._on_speed)
@@ -63,39 +69,45 @@ class MainWindow(QMainWindow):
             row.jogRequested.connect(self._on_jog)
             row.jogStopped.connect(self._on_jog_stop)
             self._rows.append(row)
-            pumps_box.addWidget(row)
-        pumps_box.addStretch(1)
-        mid.addLayout(pumps_box, 3)
+            rows_v.addWidget(row)
+        rows_v.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(rows_host)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        pumps_col.addWidget(scroll, 1)
+        mid.addLayout(pumps_col, 5)
 
         self._phases = PhasePanel()
+        self._phases.setMinimumWidth(264)
+        self._phases.setMaximumWidth(380)
         self._phases.phaseTimeChanged.connect(
             lambda p, s: self.link.send(P.cmd_phasetime(p, s))
         )
-        mid.addWidget(self._phases, 2)
+        mid.addWidget(self._phases, 4)
         root.addLayout(mid, 1)
 
-        # --- action buttons ---
-        self.setStyleSheet(_BTN_CSS)
+        # --- action buttons -------------------------------------------
         self._run = _btn("RUN", "run", self._do_run)
         self._skip = _btn("SKIP", "skip", lambda: self.link.send(P.cmd_skip()))
         self._stop = _btn("STOP", "stop", lambda: self.link.send(P.cmd_stop()))
         self._estop = _btn("E-STOP", "estop", lambda: self.link.send(P.cmd_estop()))
         actions = QGridLayout()
-        actions.addWidget(self._run, 0, 0)
-        actions.addWidget(self._skip, 0, 1)
-        actions.addWidget(self._stop, 0, 2)
-        actions.addWidget(self._estop, 0, 3)
+        actions.setSpacing(10)
+        for col, b in enumerate((self._run, self._skip, self._stop, self._estop)):
+            actions.addWidget(b, 0, col)
         root.addLayout(actions)
 
-        # --- log ---
+        # --- log ------------------------------------------------------
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
         self._log.setMaximumBlockCount(500)
-        self._log.setFixedHeight(120)
-        self._log.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self._log.setFixedHeight(92)
         root.addWidget(self._log)
 
-        # --- wire link ---
+        # --- wire link ----------------------------------------------
         link.telemetry.connect(self._on_telemetry)
         link.event.connect(lambda e: self._append("event", e))
         link.error.connect(lambda e: self._append("ERR", e))
@@ -106,10 +118,11 @@ class MainWindow(QMainWindow):
 
     # ---- link -> UI ----------------------------------------------------
     def _on_connected(self, ok: bool) -> None:
-        self._status.setText("● connected" if ok else "○ disconnected")
-        self._status.setStyleSheet(
-            "color:#2ecc71; font-size:14px;" if ok else "color:#e74c3c; font-size:14px;"
-        )
+        self._status.setText("connected" if ok else "disconnected")
+        self._status.setProperty("connected", "true" if ok else "false")
+        st = self._status.style()
+        st.unpolish(self._status)
+        st.polish(self._status)
 
     def _on_telemetry(self, t: P.Telemetry) -> None:
         self._last_telem = t
@@ -150,6 +163,6 @@ class MainWindow(QMainWindow):
 def _btn(text: str, name: str, slot) -> QPushButton:
     b = QPushButton(text)
     b.setObjectName(name)
-    b.setMinimumHeight(64)
+    b.setMinimumHeight(56)
     b.clicked.connect(slot)
     return b

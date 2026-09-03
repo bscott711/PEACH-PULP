@@ -13,6 +13,19 @@ curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6
 Clones the repo to `~/PEACH-PULP`, builds `gui/.venv`, installs PySide6 + pyserial,
 runs the tests, and checks Qt imports. Then `cd ~/PEACH-PULP/gui && .venv/bin/python run.py --sim`.
 
+## Pull the latest onto the Pi
+
+Run this whenever you want the newest code on the Pi — it force-syncs the checkout
+to `origin`, refreshes the venv, re-runs the tests, and restarts the service if it's
+installed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6/gui/deploy/pi-update.sh | bash
+```
+
+or, once the repo is on the Pi: `~/PEACH-PULP/gui/deploy/pi-update.sh`
+(handy as an alias: `alias peach-update='~/PEACH-PULP/gui/deploy/pi-update.sh'`).
+
 ## Run (dev, any machine)
 
 ```bash
@@ -21,6 +34,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python run.py --sim          # in-process firmware simulator, no hardware
 .venv/bin/python run.py                # real Octopus, autodetect the port
 .venv/bin/python run.py --port /dev/ttyACM0 --fullscreen
+.venv/bin/python run.py --sim --light  # light theme (default is dark)
 ```
 
 The **simulator** (`--sim`) runs `peachpulp.sim.FakeFirmware`, which speaks the exact
@@ -35,12 +49,16 @@ and demoable without an Octopus.
 | `peachpulp/sim.py` | `FakeFirmware` — in-process protocol-faithful fake |
 | `peachpulp/link.py` | `SerialLink` (pyserial + QThread, auto-reconnect) and `SimLink` |
 | `peachpulp/widgets.py` | `PumpRow`, `PhasePanel` |
+| `peachpulp/theme.py` | dark/light theme — Fusion + palette + QSS, no third-party dep |
 | `peachpulp/app.py` | `MainWindow` |
 | `run.py` | entry point / CLI |
 | `tests/` | pytest — `protocol.py` + `sim.py` (no Qt needed): `cd gui && python -m pytest` |
 | `deploy/` | `pi-bootstrap.sh` (one-line Pi setup), `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
+
+Dark theme by default (`--light` for light), tuned for a fingertip on the Pi
+touchscreen. Scales from 800×480 up; the pump list scrolls if it doesn't fit.
 
 - **Pumps** — one row per wired role (Sample, Dye, Sheath, Wash, Antibody, Wash2):
   speed (steps/s), run indicator, hold-torque toggle, jog.

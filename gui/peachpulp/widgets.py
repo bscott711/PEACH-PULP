@@ -20,6 +20,9 @@ from . import protocol as P
 _SPEED_STEP = 100
 _DEBOUNCE_MS = 300
 
+_DOT = "●"   # ●
+_PLAY = "▶"  # ▶
+
 
 class PumpRow(QFrame):
     """One pump: role name, speed, run indicator, hold-torque toggle, jog."""
@@ -32,21 +35,24 @@ class PumpRow(QFrame):
     def __init__(self, idx: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.idx = idx
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setObjectName("card")
+
+        self._dot = QLabel(_DOT)
+        self._dot.setFixedWidth(16)
+        self._dot.setStyleSheet("color:#5b6472;")
+        self._dot.setToolTip("running indicator")
 
         self._name = QLabel(P.PUMP_ROLES[idx])
-        self._name.setStyleSheet("font-weight: 600;")
-
-        self._dot = QLabel("●")  # ●
-        self._dot.setStyleSheet("color: #888;")
-        self._dot.setToolTip("running indicator")
+        self._name.setStyleSheet("font-weight:600;")
+        self._name.setMinimumWidth(64)
 
         self._speed = QSpinBox()
         self._speed.setRange(-P.SPEED_MAX, P.SPEED_MAX)
         self._speed.setSingleStep(_SPEED_STEP)
         self._speed.setSuffix(" st/s")
         self._speed.setAlignment(Qt.AlignRight)
-        self._speed.setMinimumHeight(40)
+        self._speed.setFixedWidth(132)
+        self._speed.setMinimumHeight(42)
 
         self._hold = QCheckBox("Hold")
         self._hold.setChecked(True)
@@ -54,14 +60,21 @@ class PumpRow(QFrame):
 
         self._jog = QPushButton("Jog")
         self._jog.setCheckable(True)
-        self._jog.setMinimumHeight(40)
+        self._jog.setFixedWidth(76)
+        self._jog.setMinimumHeight(42)
+        self._jog.setToolTip("hold to run this pump at the set speed while idle")
 
         row = QHBoxLayout(self)
+        row.setContentsMargins(12, 6, 12, 6)
+        row.setSpacing(8)
         row.addWidget(self._dot)
-        row.addWidget(self._name, 2)
-        row.addWidget(self._speed, 3)
-        row.addWidget(self._hold, 1)
-        row.addWidget(self._jog, 1)
+        row.addWidget(self._name)
+        row.addStretch(1)
+        row.addWidget(self._speed)
+        row.addWidget(self._hold)
+        row.addWidget(self._jog)
+
+        self.setMaximumHeight(60)
 
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
@@ -81,7 +94,7 @@ class PumpRow(QFrame):
 
     # ---- driven by telemetry --------------------------------------------
     def apply_state(self, st: P.PumpState, protocol_running: bool) -> None:
-        self._dot.setStyleSheet("color: #2ecc71;" if st.running else "color: #888;")
+        self._dot.setStyleSheet("color:#2ecc71;" if st.running else "color:#5b6472;")
         if self._hold.isChecked() != st.enabled:
             self._hold.blockSignals(True)
             self._hold.setChecked(st.enabled)
@@ -106,35 +119,56 @@ class PhasePanel(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setObjectName("card")
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 14)
+        outer.setSpacing(10)
 
         self._headline = QLabel("Idle")
-        self._headline.setStyleSheet("font-size: 18px; font-weight: 700;")
+        self._headline.setObjectName("phaseHeadline")
+        self._headline.setWordWrap(True)
         self._bar = QProgressBar()
         self._bar.setTextVisible(True)
-        self._bar.setMinimumHeight(28)
+        self._bar.setMinimumHeight(26)
+        self._bar.setVisible(False)  # only while a phase is running
         outer.addWidget(self._headline)
         outer.addWidget(self._bar)
 
+        hdr = QLabel("PHASE DURATIONS")
+        hdr.setObjectName("sectionHeader")
+        outer.addSpacing(4)
+        outer.addWidget(hdr)
+
         grid = QGridLayout()
-        grid.addWidget(QLabel("<b>Phase durations</b>"), 0, 0, 1, 3)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(2, 1)
         self._secs: list[QSpinBox] = []
         self._marks: list[QLabel] = []
         for p in range(P.NUM_PHASES):
             mark = QLabel(" ")
-            name = QLabel("P{}  {}".format(p + 1, P.PHASE_NAMES[p]))
+            mark.setObjectName("phaseMark")
+            mark.setFixedWidth(12)
+            num = QLabel("P{}".format(p + 1))
+            num.setStyleSheet("font-weight:700;")
+            num.setFixedWidth(22)
+            name = QLabel(P.PHASE_NAMES[p].replace(" + ", "+"))
+            name.setStyleSheet("font-size:13px;")
+            name.setWordWrap(True)
             box = QSpinBox()
             box.setRange(P.PHASE_SECONDS_MIN, P.PHASE_SECONDS_MAX)
             box.setValue(P.DEFAULT_PHASE_SECONDS[p])
             box.setSuffix(" s")
-            box.setMinimumHeight(36)
+            box.setAlignment(Qt.AlignRight)
+            box.setFixedWidth(78)
+            box.setMinimumHeight(40)
             box.editingFinished.connect(
                 lambda p=p, box=box: self.phaseTimeChanged.emit(p, box.value())
             )
-            grid.addWidget(mark, p + 1, 0)
-            grid.addWidget(name, p + 1, 1)
-            grid.addWidget(box, p + 1, 2)
+            grid.addWidget(mark, p, 0)
+            grid.addWidget(num, p, 1)
+            grid.addWidget(name, p, 2)
+            grid.addWidget(box, p, 3)
             self._secs.append(box)
             self._marks.append(mark)
         outer.addLayout(grid)
@@ -143,7 +177,8 @@ class PhasePanel(QFrame):
     def apply_telemetry(self, t: P.Telemetry) -> None:
         self._headline.setText(t.phase_label + ("  —  E-STOP" if t.estop else ""))
         for p, mark in enumerate(self._marks):
-            mark.setText("▶" if p == t.phase else " ")  # ▶
+            mark.setText(_PLAY if p == t.phase else " ")
+        self._bar.setVisible(t.phase >= 0)
         if t.phase < 0:
             self._bar.setRange(0, 1)
             self._bar.setValue(0)
