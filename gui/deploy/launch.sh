@@ -19,6 +19,11 @@ if [ ! -x "$PY" ]; then
     exit 1
 fi
 
+# When started from an SSH / Raspberry Pi Connect shell there's no display in the
+# environment. Fall back to the local session (XWayland answers on :0 on Pi OS).
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
 MODE=--fullscreen
 [ "${1:-}" = "--windowed" ] && { MODE=; shift; }
 
