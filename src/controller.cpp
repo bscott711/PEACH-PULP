@@ -28,8 +28,15 @@ static bool s_stagingOpen = false;
 // Program needs a (debounced, idle-only) flash write.
 static bool s_programDirty = false;
 
-// eeprom_buffer_flush() blocks ~1 s on an F4 sector erase, so persistence is
-// debounced and only ever runs while the sequence is idle.
+// eeprom_buffer_flush() erases a 128 KiB F4 sector — it BLOCKS ~1-2 s and starves
+// the FreeRTOS tick while it runs. Persistence is therefore debounced and only
+// ever runs while the sequence is idle. The Pi re-uploads the program on connect,
+// so if the stall is a nuisance during bring-up, build with -D PEACH_NO_PERSIST.
+#ifdef PEACH_NO_PERSIST
+static const bool kPersist = false;
+#else
+static const bool kPersist = true;
+#endif
 static const uint32_t SAVE_DEBOUNCE_MS = 3000;
 
 static int clampSpeed(int v) {
@@ -275,10 +282,10 @@ void controller_task(void *pvParameters) {
 
     // 3. debounced flash persistence — idle only, never mid-run
     uint32_t nowMs = now * portTICK_PERIOD_MS;
-    bool idle = (snap.currentPhase < 0);
+    bool canSave = kPersist && (snap.currentPhase < 0);
 
     for (int i = 0; i < NUM_PUMPS; i++) {
-      if (idle && snap.pumpSpeedSteps[i] != lastSavedLive[i]) {
+      if (canSave && snap.pumpSpeedSteps[i] != lastSavedLive[i]) {
         if (liveDirtySince[i] == 0) {
           liveDirtySince[i] = nowMs;
         } else if (nowMs - liveDirtySince[i] >= SAVE_DEBOUNCE_MS) {
@@ -291,7 +298,7 @@ void controller_task(void *pvParameters) {
       }
     }
 
-    if (idle && s_programDirty) {
+    if (canSave && s_programDirty) {
       if (programDirtySince == 0) {
         programDirtySince = nowMs;
       } else if (nowMs - programDirtySince >= SAVE_DEBOUNCE_MS) {
