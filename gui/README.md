@@ -13,6 +13,16 @@ curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6
 Clones the repo to `~/PEACH-PULP`, builds `gui/.venv`, installs PySide6 + pyserial,
 runs the tests, and checks Qt imports. Then `cd ~/PEACH-PULP/gui && .venv/bin/python run.py --sim`.
 
+### Launcher + autostart on the touchscreen
+
+```bash
+~/PEACH-PULP/gui/deploy/install-launcher.sh --autostart
+```
+
+Adds a **PEACH PULP** app-menu entry and desktop icon (double-tap to open), and starts
+the GUI fullscreen on the touchscreen at every boot. Without `--autostart` you just get
+the icons; `--off` removes everything. No sudo. `deploy/launch.sh` starts it by hand.
+
 ## Pull the latest onto the Pi
 
 Run this whenever you want the newest code on the Pi — it force-syncs the checkout
@@ -56,7 +66,7 @@ and demoable without an Octopus.
 | `peachpulp/app.py` | `MainWindow` — tabs + RUN/SKIP/STOP footer + workspace lifecycle |
 | `run.py` | entry point / CLI |
 | `tests/` | pytest — pure modules only (no Qt); `test_wire_contract.py` guards the firmware protocol |
-| `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install.sh`, `peach-pulp-gui.service` |
+| `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install-launcher.sh` + `launch.sh` (icon/autostart), `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
 

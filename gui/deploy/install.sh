@@ -20,7 +20,7 @@ echo
 echo "Test it:   .venv/bin/python run.py --sim"
 echo "Real HW:   .venv/bin/python run.py            (autodetects /dev/ttyACM*)"
 echo
-echo "Autostart on the touchscreen:"
-echo "  sudo cp deploy/peach-pulp-gui.service /etc/systemd/system/"
-echo "  # edit paths/User in that file if the repo isn't at /home/pi/PEACH-PULP"
-echo "  sudo systemctl enable --now peach-pulp-gui"
+echo "Launcher icon + autostart on the touchscreen (no sudo, path-independent):"
+echo "  deploy/install-launcher.sh              # app-menu + desktop icon"
+echo "  deploy/install-launcher.sh --autostart  # + open on boot"
+echo "  deploy/install-launcher.sh --off        # undo"

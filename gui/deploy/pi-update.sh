@@ -43,9 +43,16 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^peach-pulp-gui\.service'; t
     echo "== restarting peach-pulp-gui.service =="
     sudo systemctl restart peach-pulp-gui
     echo "  $(systemctl is-active peach-pulp-gui)"
+elif pgrep -f 'run\.py' >/dev/null; then
+    echo "== GUI is running via the launcher — restarting it =="
+    pkill -f 'run\.py' || true
+    sleep 1
+    setsid "$REPO_DIR/gui/deploy/launch.sh" >/dev/null 2>&1 &
+    echo "  relaunched (if it doesn't reappear, tap the PEACH PULP icon)"
 else
-    echo "== service not installed — start it yourself: =="
-    echo "  cd $REPO_DIR/gui && .venv/bin/python run.py --sim --fullscreen"
+    echo "== GUI not running — start it: =="
+    echo "  $REPO_DIR/gui/deploy/launch.sh            (or tap the PEACH PULP icon)"
+    echo "  $REPO_DIR/gui/deploy/install-launcher.sh --autostart   (start at boot)"
 fi
 
 echo "done."

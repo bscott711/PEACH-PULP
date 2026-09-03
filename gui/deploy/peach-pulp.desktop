@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PEACH PULP
+GenericName=Pump control panel
+Comment=PEACH PULP liquid-handling control
+Exec=__LAUNCH__
+Icon=applications-science
+Terminal=false
+Categories=Science;Utility;
+StartupNotify=false
