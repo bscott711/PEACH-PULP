@@ -55,7 +55,7 @@ and demoable without an Octopus.
 | `peachpulp/theme.py` | dark/light theme — Fusion + palette + QSS, no third-party dep |
 | `peachpulp/app.py` | `MainWindow` — tabs + RUN/SKIP/STOP footer + workspace lifecycle |
 | `run.py` | entry point / CLI |
-| `tests/` | pytest — pure modules only (no Qt): `cd gui && python -m pytest` |
+| `tests/` | pytest — pure modules only (no Qt); `test_wire_contract.py` guards the firmware protocol |
 | `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
@@ -88,9 +88,9 @@ Workspaces are JSON under `~/.local/share/peachpulp/` (override the root with
 
 ## Status
 
-Protocol + workspace + simulator unit-tested (`pytest`). Not yet run against real
-firmware — the variable-phase program needs the firmware changes in
-[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) ("Firmware work for this").
+Protocol + workspace + simulator unit-tested (`pytest`), including a wire-contract
+test against the firmware grammar. The matching firmware is on
+`breaking/octopus-stm32-fw` (commit `bbab060`) — builds, not yet run on hardware.
 
 ## TODO
 

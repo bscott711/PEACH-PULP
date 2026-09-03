@@ -111,26 +111,22 @@ Implemented in `src/core/SerialLink.*`, which replaces `src/core/NetworkManager.
 commands post a `ProtoCommand` to `protoCmdQueue`, drained by `controller_task` (where
 `InputManager::process()` used to be).
 
-### Firmware work for this (not yet done — bench task)
+### Firmware side
 
-The GUI + simulator implement the above now. The firmware on this branch still has the
-fixed `kProtocol[4]`; bring-up needs:
+Implemented on **`breaking/octopus-stm32-fw`** (commit `bbab060`) — the GUI, the simulator,
+and the firmware all speak this protocol; `gui/tests/test_wire_contract.py` checks the GUI
+half against the transcribed firmware grammar. Builds clean (~55 KB flash / 16 KB RAM), not
+yet run on hardware. The firmware changes:
 
-1. `struct Phase { uint32_t seconds; int16_t speed[NUM_PUMPS]; }` and
-   `Phase g_program[MAX_PHASES]; uint8_t g_nphases;` replacing `kProtocol[]` +
-   `SystemState.phaseSeconds[]`.
-2. `SerialLink`: a `Phase g_staging[MAX_PHASES]` buffer; `PROGADD` appends, `PROGCOMMIT`
-   copies staging→program under `systemStateMutex` (reject if 0 phases), resets `currentPhase`
-   if it's now out of range. `PROGCLEAR` zeroes the staging count.
-3. `controller_task`: `targetSteps[i] = g_program[phase].speed[i]` directly (drop the
-   bitmask lookup + the global `pumpSpeedSteps[]` for sequenced motion; keep `pumpSpeedSteps`
-   for `JOG`).
-4. Drop the hardware-E-STOP path: remove `ESTOP_BTN_PIN`, `attachInterrupt(estopISR)`,
-   `g_estopFromISR`, `BIT_ESTOP_REQUEST`, and the `ESTOP` command. `STOP` is the halt
-   (speeds → 0, phase → idle; drivers keep their per-pump enable state).
-5. EEPROM blob v2: `{ uint16_t magic; uint8_t nphases; Phase program[MAX_PHASES]; int32_t liveSpeed[8]; }`
-   — bump `MAGIC`, keep the debounced-write path. ~32×20 B ≈ 640 B; fine for emulated EEPROM.
-6. Telemetry: add `"nphases"`, emit `!EVENT prog <n>` on commit.
+- `ProgramPhase { uint32_t seconds; int16_t speed[NUM_PUMPS]; }` plus
+  `SystemState.program[MAX_PHASES]` / `nPhases`, replacing `kProtocol[]` / `phaseSeconds[]`.
+- `controller.cpp` owns a `s_staging[MAX_PHASES]` buffer (single-writer); `PROGADD` appends,
+  `PROGCOMMIT` swaps it in under `systemStateMutex` (rejects empty; clamps `currentPhase`).
+- `controller_task` runs `program[phase].speed[i]` directly; `SPEED`/`JOG` write `liveSpeedSteps[]`.
+- No E-STOP: `ESTOP_BTN_PIN` / `estopISR` / `BIT_ESTOP_REQUEST` / the `ESTOP` command all gone.
+- `StorageManager` blob v3 (`liveSpeed[]` + the program, ~680 B); persist debounced 3 s and
+  **idle-only** (`eeprom_buffer_flush` blocks ~1 s on an F4 sector erase).
+- Telemetry gains `"nphases"`, drops `"estop"`; new `!EVENT prog <n>`.
 
 ## What carries over unchanged
 
