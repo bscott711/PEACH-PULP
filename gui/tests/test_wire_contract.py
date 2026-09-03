@@ -19,6 +19,7 @@ FIRMWARE_VERBS = {
     "PING", "RUN", "STOP", "SKIP", "STATE",
     "SPEED", "PHASETIME", "ENABLE", "JOG",
     "PROGCLEAR", "PROGADD", "PROGCOMMIT",
+    "DFU",  # reboot into the ROM bootloader (src/core/DfuReboot.*)
 }
 
 
@@ -31,7 +32,7 @@ def test_every_gui_command_is_a_firmware_verb():
         P.cmd_ping(), P.cmd_run(), P.cmd_stop(), P.cmd_skip(), P.cmd_state(),
         P.cmd_speed(0, 100), P.cmd_phasetime(0, 30), P.cmd_enable(0, True),
         P.cmd_jog(0, 100), P.cmd_prog_clear(), P.cmd_prog_commit(),
-        P.cmd_prog_add(30, {0: 100}),
+        P.cmd_prog_add(30, {0: 100}), P.cmd_dfu(),
     ]
     for ln in lines:
         assert _verb(ln) in FIRMWARE_VERBS, ln

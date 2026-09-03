@@ -76,6 +76,11 @@ def cmd_state() -> str:
     return "STATE"
 
 
+def cmd_dfu() -> str:
+    """Reboot the firmware into the ROM bootloader for a jumper-free flash."""
+    return "DFU"
+
+
 def cmd_speed(idx: int, steps: int) -> str:
     return "SPEED {} {}".format(int(idx), clamp_speed(steps))
 
