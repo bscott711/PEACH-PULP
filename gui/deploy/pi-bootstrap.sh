@@ -15,12 +15,17 @@ REPO_URL="${REPO_URL:-https://github.com/bscott711/PEACH-PULP.git}"
 REPO_DIR="${REPO_DIR:-$HOME/PEACH-PULP}"
 BRANCH="${BRANCH:-gui/pi-pyside6}"
 
+# non-interactive apt: no debconf dialogs, no needrestart prompts
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+APT="sudo -E apt-get -y -qq -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
+
 say() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 
 say "system packages"
-sudo apt-get update -qq
+$APT update
 # python venv + headers, git, and the xcb libs PySide6's Qt platform plugin needs
-sudo apt-get install -y -qq \
+$APT install \
     git python3-venv python3-dev \
     libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
     libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
