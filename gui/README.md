@@ -4,7 +4,16 @@ Operator GUI for the **Raspberry Pi 5 touchscreen**. Talks to the Octopus firmwa
 over USB serial (protocol in [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)).
 PySide6 (Qt). Branch: `gui/pi-pyside6`.
 
-## Run
+## Install on the Pi (one line)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6/gui/deploy/pi-bootstrap.sh | bash
+```
+
+Clones the repo to `~/PEACH-PULP`, builds `gui/.venv`, installs PySide6 + pyserial,
+runs the tests, and checks Qt imports. Then `cd ~/PEACH-PULP/gui && .venv/bin/python run.py --sim`.
+
+## Run (dev, any machine)
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -29,7 +38,7 @@ and demoable without an Octopus.
 | `peachpulp/app.py` | `MainWindow` |
 | `run.py` | entry point / CLI |
 | `tests/` | pytest — `protocol.py` + `sim.py` (no Qt needed): `cd gui && python -m pytest` |
-| `deploy/` | `peach-pulp-gui.service`, `install.sh` |
+| `deploy/` | `pi-bootstrap.sh` (one-line Pi setup), `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
 
