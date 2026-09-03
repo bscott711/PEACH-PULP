@@ -41,7 +41,11 @@ protocol are working code we want to keep, so instead of adopting a motion stack
 
 The Octopus has no WiFi. "Connect over WiFi like now" still holds — it terminates at the Pi
 (Raspberry Pi Connect / VNC / the GUI on the LAN). Pi ↔ Octopus is a short wired USB-C cable.
-Firmware updates: SD-card `firmware.bin` or `dfu-util` from the Pi — not OTA.
+Firmware updates: **DFU over USB-C** — not OTA, not SD (this rig has no microSD). Fit the
+BOOT0 jumper (`J75`, centre of the board by the BTT logo), hold `RST` ~4 s, then
+`dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D firmware.bin`. The firmware is linked at
+`0x08000000` and overwrites BTT's SD-card bootloader — to get SD flashing back, DFU BTT's
+`bootload.hex` at `0x08000000` first.
 
 ## The sequence
 
@@ -134,22 +138,29 @@ pio run -e octopus_f446          # → .pio/build/octopus_f446/firmware.bin
 
 - Board def: `boards/octopus_f446.json` (custom — ststm32 has no Octopus entry). It pins the
   F446ZET6 + the generic 144-pin variant via `build.arduino.board = GENERIC_F446ZETX`.
-- `platformio.ini` sets `board_build.offset = 0x8000` for the 32 KiB DFU bootloader, and
-  `-DHSE_VALUE=12000000L` + USB-CDC flags.
+- **Bootloader-less**: linked at `0x08000000`, no `board_build.offset` (see the DFU note in
+  "Topology"). `-DHSE_VALUE=12000000L` + USB-CDC flags. NB the generic F446 variant's
+  `SystemClock_Config` runs SYSCLK **and the 48 MHz USB clock off HSI**, not the 12 MHz crystal —
+  USB enumerates fine at room temp but a custom HSE clock config is the robust fix if it ever
+  gets flaky.
 - Libs: `janelia-arduino/TMC2209`, `stm32duino/STM32duino FreeRTOS`, plus the core's bundled
   `SoftwareSerial` and `EEPROM`.
-- Confirmed compiling; ~55 KB flash / ~16 KB static RAM. **Not yet run on hardware.**
+- ~55 KB flash / ~16 KB static RAM. **Runs on hardware** (2026-09-03): USB CDC enumerates,
+  FreeRTOS scheduler up, telemetry streams, seed program loads.
 - The GUI (`gui/` on branch `gui/pi-pyside6`) + its `FakeFirmware` simulator implement the same
   protocol; a host-side conformance check confirms the two match.
 
 ## Open items (hardware bring-up)
 
-1. Per-driver `SoftwareSerial` VACTUAL timing under FreeRTOS — validated early; fallbacks are the
-   `TMCStepper` library or hardware-UART half-duplex buses.
-2. STM32duino + STM32FreeRTOS SysTick coexistence — 2-task smoke test first.
+1. Per-driver `SoftwareSerial` VACTUAL timing under FreeRTOS — **next up**: `JOG <i> <steps>`
+   on MOTOR0/MOTOR1 with the drivers populated. Fallbacks are the `TMCStepper` library or
+   hardware-UART half-duplex buses.
+2. ~~STM32duino + STM32FreeRTOS SysTick coexistence~~ — DONE, scheduler + 1 ms tick + telemetry
+   confirmed on hardware 2026-09-03.
 3. Exact Octopus pin map (driver EN pins, log UART) from
    `generic-bigtreetech-octopus-v1.1.cfg` + the BTT pinout PDF.
-4. Pump motor spec → TMC `run_current` (≈ 1.2 A RMS practical on the Octopus).
+4. Pump motor spec → TMC `run_current` (≈ 1.2 A RMS practical on the Octopus). Also: MOTOR POWER
+   terminal needs 12–24 V for the coils — USB / the `J68` jumper only powers logic.
 5. **`eeprom_buffer_flush()` blocks ~1 s on an F4 sector erase** — persistence is debounced (3 s)
    and idle-only, but the stall still starves the FreeRTOS tick while it runs. If it's a problem,
    move to a HAL async flash write or drop program persistence (the Pi re-uploads on connect).

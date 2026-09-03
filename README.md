@@ -32,8 +32,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the plan at
 pio run -e octopus_f446
 # -> .pio/build/octopus_f446/firmware.bin
 ```
-Copy `firmware.bin` to the Octopus microSD and power-cycle, or `dfu-util` from the Pi. See
-[pi/README.md](pi/README.md).
+Flash over USB-C via DFU: fit the BOOT0 jumper (`J75`, centre of the board by the BTT logo),
+hold `RST` ~4 s, then
+```
+dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D .pio/build/octopus_f446/firmware.bin
+```
+Remove the jumper and power-cycle. (`pio run -e octopus_f446 -t upload` does the same once the
+board is in DFU.) See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Status
 
