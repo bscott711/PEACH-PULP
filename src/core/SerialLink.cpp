@@ -1,4 +1,5 @@
 #include "core/SerialLink.h"
+#include "core/DfuReboot.h"
 #include "core/StateSnapshot.h"
 #include "messaging.h"
 #include <Arduino.h>
@@ -89,6 +90,9 @@ static void parseLine(char *line) {
     parseProgAdd();
   } else if (!strcasecmp(cmd, "PROGCOMMIT")) {
     post(ProtoAction::PROG_COMMIT);
+  } else if (!strcasecmp(cmd, "DFU")) {
+    serialEmit("!EVENT dfu"); // reboot into the ROM bootloader for a firmware update
+    dfuReboot();
   } else {
     serialEmit("!ERR unknown command");
   }

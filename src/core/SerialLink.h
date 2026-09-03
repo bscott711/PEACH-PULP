@@ -11,6 +11,7 @@
 //   PROGCLEAR
 //   PROGADD <sec> <s0> <s1> ... <s7>     (one per phase, in order)
 //   PROGCOMMIT
+//   DFU                        (reboot into the ROM bootloader; no BOOT0 jumper)
 // Out (Octopus → Pi):
 //   PONG
 //   {"phase":..,"nphases":..,"remaining":..,"pumps":[{"sp":..,"run":..,"en":..},...]}

@@ -7,6 +7,7 @@
 #include "core/SystemState.h"
 #include "core/StateSnapshot.h"
 #include "core/SerialLink.h"
+#include "core/DfuReboot.h"
 #include "core/Log.h"
 #include "tasks/MotorNode.h"
 
@@ -21,6 +22,8 @@ QueueHandle_t stateQueue = NULL;
 MotorNode *g_pumps[NUM_PUMPS] = {nullptr};
 
 void setup() {
+  dfuCheckAndJump(); // jumper-free DFU: land here after a "DFU" command + reset
+
   Serial.begin(115200); // USB CDC — command + telemetry link to the Pi
 
   xUARTMutex = xSemaphoreCreateMutex();

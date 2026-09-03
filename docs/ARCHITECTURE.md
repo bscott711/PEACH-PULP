@@ -41,11 +41,14 @@ protocol are working code we want to keep, so instead of adopting a motion stack
 
 The Octopus has no WiFi. "Connect over WiFi like now" still holds — it terminates at the Pi
 (Raspberry Pi Connect / VNC / the GUI on the LAN). Pi ↔ Octopus is a short wired USB-C cable.
-Firmware updates: **DFU over USB-C** — not OTA, not SD (this rig has no microSD). Fit the
-BOOT0 jumper (`J75`, centre of the board by the BTT logo), hold `RST` ~4 s, then
-`dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D firmware.bin`. The firmware is linked at
-`0x08000000` and overwrites BTT's SD-card bootloader — to get SD flashing back, DFU BTT's
-`bootload.hex` at `0x08000000` first.
+Firmware updates: **DFU over USB-C** — not OTA, not SD (this rig has no microSD). Normal path,
+no jumper: `tools/flash.sh [firmware.bin]` — it sends the `DFU` command, the firmware reboots
+into the ROM bootloader (`src/core/DfuReboot.*`: arms a backup register, `NVIC_SystemReset()`,
+then `dfuCheckAndJump()` at the top of `setup()` jumps to `0x1FFF0000`), `dfu-util` flashes
+`0x08000000`, `:leave` boots it. Recovery path for a bricked image: BOOT0 jumper (`J75`,
+centre of the board by the BTT logo) + hold `RST` ~4 s, then run `flash.sh` (or `dfu-util`)
+directly. The firmware is linked at `0x08000000` and overwrites BTT's SD-card bootloader — to
+get SD flashing back, DFU BTT's `bootload.hex` at `0x08000000` first.
 
 ## The sequence
 
@@ -98,6 +101,7 @@ keep the two in sync (a host-side conformance check lives with the GUI tests).
 | `PROGCLEAR` | begin staging a new program |
 | `PROGADD <sec> <s0> <s1> … <s7>` | append one phase: duration + 8 motor speeds |
 | `PROGCOMMIT` | swap the staged program in atomically (rejects an empty program) |
+| `DFU` | reboot into the ROM bootloader for a firmware update (no BOOT0 jumper) |
 | `STATE` | no-op; telemetry streams continuously |
 
 **Octopus → Pi:** JSON telemetry ~5 Hz —
