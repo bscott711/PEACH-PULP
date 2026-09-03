@@ -94,6 +94,72 @@ def _qss(c: _Colors) -> str:
     QFrame#card {{
         background: {c.surface}; border: 1px solid {c.border}; border-radius: 12px;
     }}
+    QFrame#card[active="true"] {{ border: 2px solid {c.accent}; }}
+
+    QTabWidget::pane {{
+        border: 1px solid {c.border}; border-radius: 10px; top: -1px;
+    }}
+    QTabBar::tab {{
+        background: {c.surface_alt}; color: {c.text_muted};
+        padding: 10px 22px; margin-right: 4px; font-weight: 700;
+        border-top-left-radius: 9px; border-top-right-radius: 9px;
+    }}
+    QTabBar::tab:selected {{ background: {c.surface}; color: {c.text};
+        border: 1px solid {c.border}; border-bottom: none; }}
+    QTabBar::tab:!selected:hover {{ color: {c.text}; }}
+
+    QComboBox {{
+        background: {c.surface_alt}; border: 1px solid {c.border};
+        border-radius: 8px; padding: 6px 10px; min-height: 26px;
+    }}
+    QComboBox:focus {{ border: 1px solid {c.accent}; }}
+    QComboBox:disabled {{ color: {c.disabled_fg}; background: {c.disabled_bg}; }}
+    QComboBox QAbstractItemView {{
+        background: {c.surface}; border: 1px solid {c.border};
+        selection-background-color: {c.accent}; selection-color: {c.accent_text};
+    }}
+
+    QLineEdit {{
+        background: {c.surface_alt}; border: 1px solid {c.border};
+        border-radius: 8px; padding: 6px 10px; min-height: 24px;
+        selection-background-color: {c.accent}; selection-color: {c.accent_text};
+    }}
+    QLineEdit:focus {{ border: 1px solid {c.accent}; }}
+    QLineEdit:disabled {{ color: {c.disabled_fg}; background: {c.disabled_bg}; }}
+
+    QSlider::groove:horizontal {{
+        height: 6px; border-radius: 3px; background: {c.surface_alt};
+    }}
+    QSlider::sub-page:horizontal {{ background: {c.accent}; border-radius: 3px; }}
+    QSlider::handle:horizontal {{
+        background: {c.text}; width: 20px; height: 20px; margin: -8px 0;
+        border-radius: 10px;
+    }}
+    QSlider::handle:horizontal:disabled {{ background: {c.disabled_fg}; }}
+    QSlider:disabled {{ }}
+
+    QPushButton#iconbtn {{
+        background: transparent; border: 1px solid {c.border};
+        border-radius: 8px; padding: 4px 10px; font-weight: 700; color: {c.text_muted};
+    }}
+    QPushButton#iconbtn:hover {{ color: {c.bad}; border-color: {c.bad}; }}
+    QPushButton#ghostbtn {{
+        background: transparent; border: 1px dashed {c.border};
+        border-radius: 8px; padding: 8px 14px; color: {c.text_muted}; font-weight: 700;
+    }}
+    QPushButton#ghostbtn:hover {{ color: {c.accent}; border-color: {c.accent}; }}
+
+    /* per-motor holding-torque toggle: Hold = normal, Free = amber (loose shaft) */
+    QPushButton#holdtoggle {{ font-weight: 700; }}
+    QPushButton#holdtoggle:checked {{
+        background: {c.surface_alt}; color: {c.text}; border: 1px solid {c.border};
+    }}
+    QPushButton#holdtoggle:!checked {{
+        background: {c.skip}; color: white; border: none;
+    }}
+    QPushButton#holdtoggle:disabled {{
+        background: {c.disabled_bg}; color: {c.disabled_fg}; border-color: {c.border};
+    }}
 
     QSpinBox {{
         background: {c.surface_alt}; border: 1px solid {c.border};
@@ -129,18 +195,15 @@ def _qss(c: _Colors) -> str:
         background: {c.disabled_bg}; color: {c.disabled_fg}; border-color: {c.border};
     }}
 
-    QPushButton#run, QPushButton#skip, QPushButton#stop, QPushButton#estop {{
+    QPushButton#run, QPushButton#skip, QPushButton#stop {{
         color: white; border: none; border-radius: 10px;
         padding: 16px; font-size: 18px; font-weight: 800; letter-spacing: 1px;
     }}
-    QPushButton#run   {{ background: {c.run}; }}
-    QPushButton#skip  {{ background: {c.skip}; }}
-    QPushButton#stop  {{ background: {c.stop}; }}
-    QPushButton#estop {{ background: {c.estop}; }}
-    QPushButton#run:hover, QPushButton#skip:hover,
-    QPushButton#stop:hover, QPushButton#estop:hover {{ border: none; }}
-    QPushButton#run:disabled, QPushButton#skip:disabled,
-    QPushButton#stop:disabled, QPushButton#estop:disabled {{
+    QPushButton#run  {{ background: {c.run}; }}
+    QPushButton#skip {{ background: {c.skip}; }}
+    QPushButton#stop {{ background: {c.stop}; }}
+    QPushButton#run:hover, QPushButton#skip:hover, QPushButton#stop:hover {{ border: none; }}
+    QPushButton#run:disabled, QPushButton#skip:disabled, QPushButton#stop:disabled {{
         background: {c.disabled_bg}; color: {c.disabled_fg};
     }}
 

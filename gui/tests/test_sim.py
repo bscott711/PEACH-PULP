@@ -62,16 +62,18 @@ def test_run_marks_correct_pumps_per_phase():
     assert running == {2, 3}  # Sheath, Wash
 
 
-def test_estop_stops_everything():
+def test_stop_halts_the_sequence():
     fw = FakeFirmware()
     fw.feed(P.cmd_phasetime(0, 3600))
-    fw.feed("SPEED 0 2000")
     fw.feed("RUN")
     assert _telem(fw).phase == 0
-    fw.feed("ESTOP")
+    fw.feed("STOP")
     t = _telem(fw)
     assert t.phase == -1
     assert not any(p.running for p in t.pumps)
+    assert all(p.enabled for p in t.pumps)  # drivers stay energized
+    fw.feed("RUN")  # recoverable
+    assert _telem(fw).phase == 0
 
 
 def test_jog_only_when_idle():
@@ -79,7 +81,7 @@ def test_jog_only_when_idle():
     fw.feed("JOG 4 800")
     assert _telem(fw).pumps[4].running is True
 
-    fw.feed("ESTOP")  # back to idle first is implicit; now start protocol
+    fw.feed("STOP")
     fw.feed(P.cmd_phasetime(0, 3600))
     fw.feed("RUN")
     fw.feed("JOG 5 800")  # ignored while running
@@ -100,3 +102,44 @@ def test_bad_command():
     fw = FakeFirmware()
     fw.feed("FLOOB 1 2")
     assert any("!ERR" in line for line in fw.drain())
+
+
+def test_upload_program_then_run():
+    fw = FakeFirmware()
+    for line in P.cmd_program(
+        [(1, {0: 1500}), (1, {2: 900, 3: 900})]
+    ):
+        fw.feed(line)
+    assert any(l == "!EVENT prog 2" for l in fw.drain())
+    assert _telem(fw).nphases == 2
+
+    fw.feed("RUN")
+    assert "!EVENT phase 0" in fw.drain()
+    running = {i for i, p in enumerate(_telem(fw).pumps) if p.running}
+    assert running == {0}
+    assert _telem(fw).pumps[0].speed == 1500
+
+    fw.feed("SKIP")
+    fw.tick()
+    running = {i for i, p in enumerate(_telem(fw).pumps) if p.running}
+    assert running == {2, 3}
+
+    events = []
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        fw.tick()
+        events += fw.drain()
+        if "!EVENT done" in events:
+            break
+        time.sleep(0.05)
+    assert "!EVENT done" in events
+    assert _telem(fw).phase == -1
+
+
+def test_empty_program_commit_is_rejected():
+    fw = FakeFirmware()
+    fw.feed("PROGCLEAR")
+    fw.feed("PROGCOMMIT")
+    assert any("!ERR" in l for l in fw.drain())
+    # seed program still intact
+    assert _telem(fw).nphases == P.NUM_PHASES

@@ -9,7 +9,8 @@ Porting the ESP32 firmware onto a **BigTreeTech Octopus v1.1 (STM32F446ZET6)** a
 
 - **Octopus** — 8× TMC2209 in VACTUAL velocity mode, per-driver software UART. Headless.
 - **Raspberry Pi 5 + touchscreen** — custom GUI (PySide6), talks to the Octopus over **USB serial**.
-- **No Klipper, no gcode.** The two-phase protocol (now a 4-phase table) stays as firmware.
+- **No Klipper, no gcode.** The sequence is a variable list of phases (duration + speed per
+  motor), edited on the Pi and uploaded to the firmware; the firmware just runs it.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the plan at
 `~/.claude/plans/in-peach-pulp-i-tingly-globe.md`.

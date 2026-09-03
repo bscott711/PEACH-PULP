@@ -46,35 +46,56 @@ and demoable without an Octopus.
 | Path | What |
 |---|---|
 | `peachpulp/protocol.py` | command builders + telemetry/event parser — pure, no Qt/serial |
+| `peachpulp/workspace.py` | `Workspace` / `PhaseStep` model + JSON save/load — pure |
 | `peachpulp/sim.py` | `FakeFirmware` — in-process protocol-faithful fake |
 | `peachpulp/link.py` | `SerialLink` (pyserial + QThread, auto-reconnect) and `SimLink` |
-| `peachpulp/widgets.py` | `PumpRow`, `PhasePanel` |
+| `peachpulp/widgets.py` | `SpeedControl` (bar + box), `PumpRow`, `RunStatusBar` |
+| `peachpulp/live.py` | `LivePanel` — the Live tab |
+| `peachpulp/automated.py` | phase-program editor + workspace bar — the Automated tab |
 | `peachpulp/theme.py` | dark/light theme — Fusion + palette + QSS, no third-party dep |
-| `peachpulp/app.py` | `MainWindow` |
+| `peachpulp/app.py` | `MainWindow` — tabs + RUN/SKIP/STOP footer + workspace lifecycle |
 | `run.py` | entry point / CLI |
-| `tests/` | pytest — `protocol.py` + `sim.py` (no Qt needed): `cd gui && python -m pytest` |
-| `deploy/` | `pi-bootstrap.sh` (one-line Pi setup), `install.sh`, `peach-pulp-gui.service` |
+| `tests/` | pytest — pure modules only (no Qt): `cd gui && python -m pytest` |
+| `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
 
 Dark theme by default (`--light` for light), tuned for a fingertip on the Pi
-touchscreen. Scales from 800×480 up; the pump list scrolls if it doesn't fit.
+touchscreen. In fullscreen: **Esc** leaves fullscreen, **F11** toggles it, **Ctrl+Q** quits.
 
-- **Pumps** — one row per wired role (Sample, Dye, Sheath, Wash, Antibody, Wash2):
-  speed (steps/s), run indicator, hold-torque toggle, jog.
-- **Phase durations** — T1–T4 editable; live progress bar + remaining time for the
-  running phase.
-- **RUN / SKIP / STOP / E-STOP** buttons.
-- Log pane (firmware `#` lines, `!EVENT`, `!ERR`).
+**Live tab** (home) — direct manual control, one row per pump:
+
+- a draggable **speed bar** + a numeric box (steps/s, negative = reverse)
+- **Hold / Free** toggle — switch to *Free* to drop holding torque and hand-turn the
+  syringe during setup; back to *Hold* to lock it
+- **Jog** — run this pump at the set speed while idle
+- run indicator dot
+- While an automated sequence runs, the rows become a read-only mirror of telemetry.
+
+**Automated tab** — build the sequence:
+
+- **Workspace bar** — pick / Load / Save / Save As / New. The last-used workspace loads
+  on startup; unsaved edits show a `*`.
+- A card per **phase**: a label, a duration, and a list of **motor : speed** rows
+  (add/remove motors, add/remove phases freely). The active phase highlights while running.
+- Edits upload to the firmware automatically (debounced) and on connect.
+
+**Footer** (both tabs) — **RUN** (start the sequence) · **SKIP** (advance a phase now) ·
+**STOP** (halt; recoverable with RUN). Plus a log pane.
+
+Workspaces are JSON under `~/.local/share/peachpulp/` (override the root with
+`$PEACHPULP_HOME`).
 
 ## Status
 
-First cut. Protocol + simulator unit-tested (`pytest`, 14 tests). Not yet run against
-real firmware (pending Octopus bring-up on the `breaking/octopus-stm32-fw` branch).
+Protocol + workspace + simulator unit-tested (`pytest`). Not yet run against real
+firmware — the variable-phase program needs the firmware changes in
+[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) ("Firmware work for this").
 
 ## TODO
 
 - Reconnect/health UI polish; port picker in the GUI
-- Confirm-dialog on RUN; disable edits sensibly while running
+- Confirm-dialog on RUN
 - Volume calibration (steps ↔ mL) per pump, once pumps are characterised
 - Kiosk niceties (hide cursor, screen-blank inhibit)
+- Rename pumps from the GUI (model already supports per-workspace names)

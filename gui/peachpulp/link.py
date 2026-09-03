@@ -34,6 +34,11 @@ class LinkBase(QObject):
     def send(self, line: str) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def send_lines(self, lines) -> None:
+        """Send several command lines in order (e.g. a program upload)."""
+        for line in lines:
+            self.send(line)
+
     def _dispatch(self, line: str) -> None:
         parsed = P.parse_line(line)
         if not parsed:

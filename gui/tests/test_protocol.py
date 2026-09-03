@@ -44,7 +44,7 @@ def test_parse_pong_log_event_error():
 
 def test_parse_telemetry():
     line = (
-        '{"phase":1,"remaining":42,"estop":false,"pumps":['
+        '{"phase":1,"remaining":42,"nphases":4,"pumps":['
         '{"sp":2000,"run":1,"en":1},{"sp":0,"run":0,"en":1},'
         '{"sp":1500,"run":1,"en":1},{"sp":0,"run":0,"en":0},'
         '{"sp":0,"run":0,"en":1},{"sp":0,"run":0,"en":1},'
@@ -52,7 +52,7 @@ def test_parse_telemetry():
     )
     kind, t = P.parse_line(line)
     assert kind == "telemetry"
-    assert t.phase == 1 and t.remaining_s == 42 and t.estop is False
+    assert t.phase == 1 and t.remaining_s == 42
     assert t.running is True
     assert t.phase_label.startswith("Phase 2")
     assert t.pumps[0] == P.PumpState(speed=2000, running=True, enabled=True)
@@ -61,7 +61,7 @@ def test_parse_telemetry():
 
 
 def test_parse_idle_telemetry():
-    kind, t = P.parse_line('{"phase":-1,"remaining":0,"estop":false,"pumps":[]}')
+    kind, t = P.parse_line('{"phase":-1,"remaining":0,"pumps":[]}')
     assert kind == "telemetry"
     assert t.running is False
     assert t.phase_label == "Idle"
@@ -70,3 +70,37 @@ def test_parse_idle_telemetry():
 def test_parse_bad_json():
     kind, msg = P.parse_line('{"phase":1,')
     assert kind == "error" and "bad JSON" in msg
+
+
+def test_program_command_builders():
+    assert P.cmd_prog_clear() == "PROGCLEAR"
+    assert P.cmd_prog_commit() == "PROGCOMMIT"
+    assert P.cmd_prog_add(30, {0: 1000, 2: -500}) == "PROGADD 30 1000 0 -500 0 0 0 0 0"
+    assert P.cmd_prog_add(9999, [10] * 3) == "PROGADD 3600 10 10 10 0 0 0 0 0"
+
+
+def test_cmd_program_from_pairs_and_objects():
+    lines = P.cmd_program([(10, {1: 800}), (5, [0, 0, 300])])
+    assert lines == [
+        "PROGCLEAR",
+        "PROGADD 10 0 800 0 0 0 0 0 0",
+        "PROGADD 5 0 0 300 0 0 0 0 0",
+        "PROGCOMMIT",
+    ]
+
+    class Step:
+        seconds = 12
+        speeds = {0: 100}
+
+    assert P.cmd_program([Step()]) == [
+        "PROGCLEAR",
+        "PROGADD 12 100 0 0 0 0 0 0 0",
+        "PROGCOMMIT",
+    ]
+
+
+def test_telemetry_nphases_and_label():
+    kind, t = P.parse_line('{"phase":2,"nphases":5,"remaining":9,"pumps":[]}')
+    assert kind == "telemetry"
+    assert t.nphases == 5
+    assert t.phase_label == "Phase 3 / 5"
