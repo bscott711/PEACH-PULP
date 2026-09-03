@@ -30,6 +30,7 @@ struct MotorConfig {
   const char *name;
 };
 
+// MOTOR0..MOTOR5 are wired to the 6 pumps; MOTOR6/7 are spare (no stepstick).
 //                       UART   EN     role
 static const MotorConfig kPumpConfigs[NUM_PUMPS] = {
     {PC4, PF14, "Sample"},   // MOTOR0  P_SAMPLE
@@ -38,15 +39,9 @@ static const MotorConfig kPumpConfigs[NUM_PUMPS] = {
     {PC7, PA0, "Wash"},      // MOTOR3  P_WASH
     {PF2, PG2, "Antibody"},  // MOTOR4  P_ANTIBODY
     {PE4, PF1, "Wash2"},     // MOTOR5  P_WASH2
-    {PE1, PD4, "Spare6"},    // MOTOR6
-    {PD3, PE0, "Spare7"},    // MOTOR7
+    {PE1, PD4, "Spare6"},    // MOTOR6  (unpopulated)
+    {PD3, PE0, "Spare7"},    // MOTOR7  (unpopulated)
 };
-
-// ==========================================
-// Hardware E-STOP button — normally-open to GND on a spare endstop input
-// (DIAG0 / "X-STOP" on the Octopus). INPUT_PULLUP, active low.
-// ==========================================
-#define ESTOP_BTN_PIN PG6
 
 // ==========================================
 // FreeRTOS task stacks (WORDS — vanilla FreeRTOS, unlike the ESP32 byte counts)

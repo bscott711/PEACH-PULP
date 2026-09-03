@@ -8,8 +8,10 @@ Porting the ESP32 firmware onto a **BigTreeTech Octopus v1.1 (STM32F446ZET6)** a
 3 pumps to 8, keeping the existing FreeRTOS / Active-Object / VACTUAL architecture.
 
 - **Octopus** — 8× TMC2209 in VACTUAL velocity mode, per-driver software UART. Headless.
+  MOTOR0..5 wired (Sample, Dye, Sheath, Wash, Antibody, Wash2).
 - **Raspberry Pi 5 + touchscreen** — custom GUI (PySide6), talks to the Octopus over **USB serial**.
-- **No Klipper, no gcode.** The two-phase protocol (now a 4-phase table) stays as firmware.
+- **No Klipper, no gcode.** The sequence is a variable list of phases (duration + speed per motor)
+  built on the Pi and uploaded to the firmware, which just runs it.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the plan at
 `~/.claude/plans/in-peach-pulp-i-tingly-globe.md`.

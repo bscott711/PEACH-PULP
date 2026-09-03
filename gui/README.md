@@ -1,21 +1,13 @@
-# PEACH PULP — Pi GUI (Phase 8)
+# PEACH PULP — Pi GUI
 
-Placeholder. The operator GUI runs on the **Raspberry Pi 5 touchscreen** and talks to the
-Octopus over **USB serial** (the protocol in [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)).
+The operator GUI lives on branch **`gui/pi-pyside6`** (PySide6, runs on the Raspberry Pi 5
+touchscreen, talks to the Octopus over USB serial). It is developed in parallel with this
+firmware branch against an in-process `FakeFirmware` simulator.
 
-## Plan
+This branch only carries the **firmware** side of the protocol
+(`src/core/SerialLink.*`, `src/controller.cpp`). The two are kept in lock-step — see
+[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) "Pi ↔ Octopus serial protocol".
 
-- **PySide6** (Qt), fullscreen, touch-first. `pyserial` to `/dev/serial/by-id/<octopus>`.
-- Screens:
-  - per-pump speed control with role labels (Sample / Dye / Sheath / Wash / Antibody / Wash 2)
-  - phase durations T1–T4
-  - big **RUN** / **SKIP** / **E-STOP**
-  - phase progress bar + live telemetry (`!STATE` lines), connection indicator
-- systemd service: auto-start on boot, auto-reconnect when the USB cable is replugged.
-
-## Protocol (quick ref)
-
-Send: `RUN` `STOP` `ESTOP` `SKIP` `SPEED <idx> <steps>` `PHASETIME <phase> <s>`
-`ENABLE <idx> <0|1>` `JOG <idx> <steps>` `STATE` `PING`
-
-Receive: JSON telemetry lines, `!EVENT ...`, `!ERR ...`, `# ...` logs.
+```bash
+git switch gui/pi-pyside6      # the GUI, deploy scripts, tests
+```

@@ -20,8 +20,6 @@ QueueHandle_t stateQueue = NULL;
 //      constructed after the Arduino core is initialised) ----
 MotorNode *g_pumps[NUM_PUMPS] = {nullptr};
 
-static void estopISR() { g_estopFromISR = true; }
-
 void setup() {
   Serial.begin(115200); // USB CDC — command + telemetry link to the Pi
 
@@ -29,9 +27,6 @@ void setup() {
   g_serialMutex = xSemaphoreCreateMutex();
 
   initSystemState(); // storage + systemState + systemStateMutex + controlEvents
-
-  pinMode(ESTOP_BTN_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(ESTOP_BTN_PIN), estopISR, FALLING);
 
   // Start one Active-Object task per pump.
   for (int i = 0; i < NUM_PUMPS; i++) {

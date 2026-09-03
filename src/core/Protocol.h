@@ -2,41 +2,41 @@
 #include <stdint.h>
 #include "core/SystemState.h"
 
-// The dosing protocol as a phase table. Each phase runs a fixed set of pumps
-// (each at its configured pumpSpeedSteps) for phaseSeconds[phase], then the
-// controller advances; after the last phase it returns to idle.
+// The dosing sequence is defined on the Pi GUI (add/remove phases, and per phase
+// add/remove motors with a speed + a duration) and uploaded whole via
+// PROGCLEAR / PROGADD / PROGCOMMIT. The firmware just runs g_program[]. There is
+// no built-in phase table any more.
 //
-//   Phase 1 : Sample + Dye + Sheath
-//   Phase 2 : Sheath + Wash
-//   Phase 3 : Sheath + Antibody
-//   Phase 4 : Sheath + Wash 2
-//
-// Sheath (P_SHEATH) runs in every phase. Replaces the hardcoded PROTO_PHASE1/2
-// switch from the ESP32 controller.
+// The seed below is only a fallback for a fresh device / bad flash blob. The Pi
+// re-uploads the operator's real program on connect. It reproduces the original
+// fixed protocol and must match the GUI's default workspace
+// (gui/peachpulp/workspace.py default_workspace) and the simulator's
+// _seed_program() (gui/peachpulp/sim.py).
 
 #define PUMP_BIT(role) (1u << (role))
 
-struct ProtocolPhase {
-  uint8_t activeMask; // bit i set ⇒ pump i runs at pumpSpeedSteps[i]
-};
-
-static const ProtocolPhase kProtocol[NUM_PHASES] = {
-    {PUMP_BIT(P_SAMPLE) | PUMP_BIT(P_DYE) | PUMP_BIT(P_SHEATH)},
-    {PUMP_BIT(P_SHEATH) | PUMP_BIT(P_WASH)},
-    {PUMP_BIT(P_SHEATH) | PUMP_BIT(P_ANTIBODY)},
-    {PUMP_BIT(P_SHEATH) | PUMP_BIT(P_WASH2)},
-};
-
-// Fallback durations used until the operator sets + persists their own.
-static const uint32_t kDefaultPhaseSeconds[NUM_PHASES] = {60, 30, 60, 30};
-
-static const char *const kPhaseNames[NUM_PHASES] = {
-    "P1 Sample+Dye+Sheath",
-    "P2 Sheath+Wash",
-    "P3 Sheath+Antibody",
-    "P4 Sheath+Wash2",
-};
-
+// Cosmetic names for log lines.
 static const char *const kPumpNames[NUM_PUMPS] = {
     "Sample", "Dye", "Sheath", "Wash", "Antibody", "Wash2", "Spare6", "Spare7",
 };
+
+#define SEED_PHASES 4
+#define SEED_STEP_SPEED 1000
+
+static const uint8_t kSeedMask[SEED_PHASES] = {
+    PUMP_BIT(P_SAMPLE) | PUMP_BIT(P_DYE) | PUMP_BIT(P_SHEATH),
+    PUMP_BIT(P_SHEATH) | PUMP_BIT(P_WASH),
+    PUMP_BIT(P_SHEATH) | PUMP_BIT(P_ANTIBODY),
+    PUMP_BIT(P_SHEATH) | PUMP_BIT(P_WASH2),
+};
+static const uint32_t kSeedSeconds[SEED_PHASES] = {60, 30, 60, 30};
+
+// Fill dst[0..SEED_PHASES) with the seed program; returns the phase count.
+static inline uint8_t buildSeedProgram(ProgramPhase *dst) {
+  for (int p = 0; p < SEED_PHASES; p++) {
+    dst[p].seconds = kSeedSeconds[p];
+    for (int i = 0; i < NUM_PUMPS; i++)
+      dst[p].speed[i] = (kSeedMask[p] & PUMP_BIT(i)) ? SEED_STEP_SPEED : 0;
+  }
+  return SEED_PHASES;
+}
