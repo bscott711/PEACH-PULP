@@ -3,3 +3,9 @@
 .cache/**
 build_output/**
 include/secrets.h
+
+# Pi GUI (Phase 8)
+gui/.venv/
+gui/__pycache__/
+gui/**/__pycache__/
+*.pyc
