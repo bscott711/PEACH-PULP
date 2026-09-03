@@ -1,0 +1,17 @@
+[project]
+name = "peachpulp-gui"
+version = "0.1.0"
+description = "PEACH PULP operator GUI for the Raspberry Pi touchscreen"
+requires-python = ">=3.9"
+dependencies = ["PySide6>=6.5", "pyserial>=3.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.setuptools]
+packages = ["peachpulp"]

@@ -4,8 +4,9 @@
 build_output/**
 include/secrets.h
 
-# Pi GUI (Phase 8)
+# Pi GUI
 gui/.venv/
-gui/__pycache__/
 gui/**/__pycache__/
+gui/**/.pytest_cache/
+gui/*.egg-info/
 *.pyc

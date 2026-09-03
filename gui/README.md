@@ -1,21 +1,53 @@
-# PEACH PULP — Pi GUI (Phase 8)
+# PEACH PULP — Pi GUI
 
-Placeholder. The operator GUI runs on the **Raspberry Pi 5 touchscreen** and talks to the
-Octopus over **USB serial** (the protocol in [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)).
+Operator GUI for the **Raspberry Pi 5 touchscreen**. Talks to the Octopus firmware
+over USB serial (protocol in [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)).
+PySide6 (Qt). Branch: `gui/pi-pyside6`.
 
-## Plan
+## Run
 
-- **PySide6** (Qt), fullscreen, touch-first. `pyserial` to `/dev/serial/by-id/<octopus>`.
-- Screens:
-  - per-pump speed control with role labels (Sample / Dye / Sheath / Wash / Antibody / Wash 2)
-  - phase durations T1–T4
-  - big **RUN** / **SKIP** / **E-STOP**
-  - phase progress bar + live telemetry (`!STATE` lines), connection indicator
-- systemd service: auto-start on boot, auto-reconnect when the USB cable is replugged.
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-## Protocol (quick ref)
+.venv/bin/python run.py --sim          # in-process firmware simulator, no hardware
+.venv/bin/python run.py                # real Octopus, autodetect the port
+.venv/bin/python run.py --port /dev/ttyACM0 --fullscreen
+```
 
-Send: `RUN` `STOP` `ESTOP` `SKIP` `SPEED <idx> <steps>` `PHASETIME <phase> <s>`
-`ENABLE <idx> <0|1>` `JOG <idx> <steps>` `STATE` `PING`
+The **simulator** (`--sim`) runs `peachpulp.sim.FakeFirmware`, which speaks the exact
+same command + telemetry protocol as the firmware, so the whole GUI is developable
+and demoable without an Octopus.
 
-Receive: JSON telemetry lines, `!EVENT ...`, `!ERR ...`, `# ...` logs.
+## Layout
+
+| Path | What |
+|---|---|
+| `peachpulp/protocol.py` | command builders + telemetry/event parser — pure, no Qt/serial |
+| `peachpulp/sim.py` | `FakeFirmware` — in-process protocol-faithful fake |
+| `peachpulp/link.py` | `SerialLink` (pyserial + QThread, auto-reconnect) and `SimLink` |
+| `peachpulp/widgets.py` | `PumpRow`, `PhasePanel` |
+| `peachpulp/app.py` | `MainWindow` |
+| `run.py` | entry point / CLI |
+| `tests/` | pytest — `protocol.py` + `sim.py` (no Qt needed): `cd gui && python -m pytest` |
+| `deploy/` | `peach-pulp-gui.service`, `install.sh` |
+
+## Screen
+
+- **Pumps** — one row per wired role (Sample, Dye, Sheath, Wash, Antibody, Wash2):
+  speed (steps/s), run indicator, hold-torque toggle, jog.
+- **Phase durations** — T1–T4 editable; live progress bar + remaining time for the
+  running phase.
+- **RUN / SKIP / STOP / E-STOP** buttons.
+- Log pane (firmware `#` lines, `!EVENT`, `!ERR`).
+
+## Status
+
+First cut. Protocol + simulator unit-tested (`pytest`, 14 tests). Not yet run against
+real firmware (pending Octopus bring-up on the `breaking/octopus-stm32-fw` branch).
+
+## TODO
+
+- Reconnect/health UI polish; port picker in the GUI
+- Confirm-dialog on RUN; disable edits sensibly while running
+- Volume calibration (steps ↔ mL) per pump, once pumps are characterised
+- Kiosk niceties (hide cursor, screen-blank inhibit)

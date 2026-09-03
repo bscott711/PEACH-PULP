@@ -1,0 +1,6 @@
+# PEACH PULP Pi GUI
+PySide6>=6.5
+pyserial>=3.5
+
+# dev / test only
+pytest>=7.0
