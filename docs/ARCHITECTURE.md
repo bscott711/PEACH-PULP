@@ -96,11 +96,26 @@ commands post a `ProtoCommand` to `protoCmdQueue`, drained by `controller_task` 
 | ESP32 | STM32 |
 |---|---|
 | `esp_log.h` / `ESP_LOGx` | trimmed `PEACH_LOG*` → `Serial` `#` lines (`src/core/Log.h`) |
-| `Preferences` / NVS (`StorageManager`) | `FlashStorage_STM32` (same `save*/load*` API) |
+| `Preferences` / NVS (`StorageManager`) | STM32 emulated-EEPROM flash page (`<EEPROM.h>` `eeprom_buffer_*`), same `save*/load*` API |
 | `NetworkManager` (WiFi/mDNS/OTA/6666 bridge) | `SerialLink` (USB CDC command + telemetry) |
-| `Serial1.begin(baud, cfg, rx, tx)` 4-arg | per-driver `SoftwareSerial` |
+| `Serial1.begin(baud, cfg, rx, tx)` 4-arg, shared TMC bus | per-driver one-wire `SoftwareSerial` (write-only) |
 | `SPI.begin(sck,-1,mosi,-1)`, `IRAM_ATTR`, seesaw, U8g2 | deleted with the on-device UI |
-| `xTaskCreate` stack in **bytes** | vanilla FreeRTOS stack in **words** (retuned) |
+| `xTaskCreate` stack in **bytes**; scheduler already running in `setup()` | vanilla FreeRTOS stack in **words**; `setup()` ends with `vTaskStartScheduler()`, `loop()` unused |
+| `freertos/xxx.h` includes | `src/rtos.h` → `<STM32FreeRTOS.h>` |
+
+## Building
+
+```
+pio run -e octopus_f446          # → .pio/build/octopus_f446/firmware.bin
+```
+
+- Board def: `boards/octopus_f446.json` (custom — ststm32 has no Octopus entry). It pins the
+  F446ZET6 + the generic 144-pin variant via `build.arduino.board = GENERIC_F446ZETX`.
+- `platformio.ini` sets `board_build.offset = 0x8000` for the 32 KiB DFU bootloader, and
+  `-DHSE_VALUE=12000000L` + USB-CDC flags.
+- Libs: `janelia-arduino/TMC2209`, `stm32duino/STM32duino FreeRTOS`, plus the core's bundled
+  `SoftwareSerial` and `EEPROM`.
+- Confirmed compiling; ~56 KB flash / ~15 KB static RAM. Not yet run on hardware.
 
 ## Open items (hardware bring-up)
 

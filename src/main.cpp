@@ -1,106 +1,61 @@
+#include <Arduino.h>
+#include <stdio.h>
+#include "rtos.h"
+#include "HardwareConfig.h"
 #include "controller.h"
 #include "messaging.h"
+#include "core/SystemState.h"
+#include "core/StateSnapshot.h"
+#include "core/SerialLink.h"
+#include "core/Log.h"
 #include "tasks/MotorNode.h"
-#include "tasks/LCD_task.h"
-#include "tasks/encoder_task.h"
-#include "drivers/LCDDriver.h"
-#include "core/NetworkManager.h"
-#include "core/UIData.h"
-#include "HardwareConfig.h"
-#include <ArduinoOTA.h>
-#include <Wire.h>
 
-extern TaskHandle_t lcdTaskHandle;
+// ---- global queue handles (declared extern in messaging.h) ----
+QueueHandle_t pumpCmdQueue[NUM_PUMPS];
+QueueHandle_t pumpTelQueue[NUM_PUMPS];
+QueueHandle_t protoCmdQueue = NULL;
+QueueHandle_t stateQueue = NULL;
 
-// Sample Pump (TMC2209 address 0)
-const MotorConfig samplePumpConfig = {
-    .serial = &Serial1, // Use Serial1 (UART1)
-    .address = TMC2209::SERIAL_ADDRESS_0,
-    .rxPin = RXD1,
-    .txPin = TXD1,
-    .name = "SAMPLE"
-};
+// ---- pump nodes (heap-allocated in setup so SoftwareSerial members are
+//      constructed after the Arduino core is initialised) ----
+MotorNode *g_pumps[NUM_PUMPS] = {nullptr};
 
-// Dye Pump (TMC2209 address 1)
-const MotorConfig dyePumpConfig = {
-    .serial = &Serial1, // Use Serial1 (UART1)
-    .address = TMC2209::SERIAL_ADDRESS_1,
-    .rxPin = RXD1,
-    .txPin = TXD1,
-    .name = "DYE"
-};
-
-// Wash Pump (TMC2209 address 2)
-const MotorConfig washPumpConfig = {
-    .serial = &Serial1, // Use Serial1 (UART1)
-    .address = TMC2209::SERIAL_ADDRESS_2,
-    .rxPin = RXD1,
-    .txPin = TXD1,
-    .name = "WASH"
-};
-
-// Global Node instances (extern in controller.cpp)
-MotorNode g_samplePumpNode(samplePumpConfig);
-MotorNode g_dyePumpNode(dyePumpConfig);
-MotorNode g_washPumpNode(washPumpConfig);
+static void estopISR() { g_estopFromISR = true; }
 
 void setup() {
-  // Create shared UART mutex before starting motor tasks
+  Serial.begin(115200); // USB CDC — command + telemetry link to the Pi
+
   xUARTMutex = xSemaphoreCreateMutex();
+  g_serialMutex = xSemaphoreCreateMutex();
 
-  // USB serial for debug logging — motors use Serial1 on the TMC UART pins
-  Serial.begin(115200);
+  initSystemState(); // storage + systemState + systemStateMutex + controlEvents
 
-  // Global wake up for TMC2209s on the shared bus
-  pinMode(TXD1, OUTPUT);
-  digitalWrite(TXD1, HIGH);
-  delay(50);
+  pinMode(ESTOP_BTN_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ESTOP_BTN_PIN), estopISR, FALLING);
 
-  // Pre-initialize Serial1 in setup() context
-  Serial1.begin(SERIAL_BAUD_RATE, SERIAL_8N1, RXD1, TXD1);
-  delay(50);
+  // Start one Active-Object task per pump.
+  for (int i = 0; i < NUM_PUMPS; i++) {
+    g_pumps[i] = new MotorNode(kPumpConfigs[i]);
+    char name[10];
+    snprintf(name, sizeof(name), "pump%d", i);
+    g_pumps[i]->start(name, STACK_PUMP_NODE, PRIO_PUMP_NODE);
+    pumpCmdQueue[i] = g_pumps[i]->getCmdQueue();
+    pumpTelQueue[i] = g_pumps[i]->getTelQueue();
+  }
 
-  // Initialize System State from NVS
-  initSystemState();
+  protoCmdQueue = xQueueCreate(16, sizeof(ProtoCommand));
+  stateQueue = xQueueCreate(1, sizeof(StateSnapshot));
 
-  // Start I2C line (used by the rotary encoders)
-  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  xTaskCreate(controller_task, "controller", STACK_CONTROLLER, NULL,
+              PRIO_CONTROLLER, NULL);
+  xTaskCreate(serialLinkTask, "serial", STACK_SERIAL, NULL, PRIO_SERIAL, NULL);
 
-  encoderInit();
-  LCDInit();              // OLED splash screen
-  NetworkManager::init(); // WiFi (NVS/scan), mDNS, OTA, log bridge
+  // STM32duino FreeRTOS: the scheduler is started explicitly here; loop() is
+  // never used (unlike the ESP32 core where setup/loop run as a task).
+  vTaskStartScheduler();
 
-  // Elevate setup() to Priority 5 (higher than our tasks)
-  vTaskPrioritySet(NULL, 5);
-
-  // 1. Start Active Motion Nodes
-  if (!g_samplePumpNode.start("SamplePump", 4096, 2))
-    ESP_LOGE("MAIN", "Failed SamplePump");
-  if (!g_dyePumpNode.start("DyePump", 4096, 2))
-    ESP_LOGE("MAIN", "Failed DyePump");
-  if (!g_washPumpNode.start("WashPump", 4096, 2))
-    ESP_LOGE("MAIN", "Failed WashPump");
-
-  // 2. Link the global messaging queues
-  samplePumpCmdQueue = g_samplePumpNode.getCmdQueue();
-  samplePumpTelQueue = g_samplePumpNode.getTelQueue();
-  dyePumpCmdQueue = g_dyePumpNode.getCmdQueue();
-  dyePumpTelQueue = g_dyePumpNode.getTelQueue();
-  washPumpCmdQueue = g_washPumpNode.getCmdQueue();
-  washPumpTelQueue = g_washPumpNode.getTelQueue();
-  lcdDataQueue = xQueueCreate(1, sizeof(UIData));
-
-  // 3. Create Dependent Tasks
-  static int lcd_interval = TASK_REFRESH_LCD;
-  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);
-  xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
-  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, &lcdTaskHandle);
-
-  // Restore setup() to Priority 1
-  vTaskPrioritySet(NULL, 1);
+  for (;;) {
+  } // unreachable
 }
 
-void loop() {
-  NetworkManager::handle();
-  vTaskDelay(pdMS_TO_TICKS(50));
-}
+void loop() {}

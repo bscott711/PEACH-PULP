@@ -1,7 +1,5 @@
 #pragma once
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/task.h>
+#include "rtos.h"
 #include <stdint.h>
 
 // Default task update interval in milliseconds (can be overridden per-node)

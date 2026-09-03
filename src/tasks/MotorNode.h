@@ -1,49 +1,37 @@
 #pragma once
+#include <SoftwareSerial.h>
 #include "tasks/ActiveMotionNode.h"
 #include "messaging.h"
 #include "drivers/MotorDriver.h"
-#include <freertos/semphr.h>
+#include "HardwareConfig.h"
+#include "rtos.h"
 
+// Serializes all TMC2209 software-UART writes so the per-driver one-wire TX
+// windows never overlap. Created in main.cpp before the pump tasks start.
 extern SemaphoreHandle_t xUARTMutex;
 
-struct MotorConfig {
-    HardwareSerial* serial;
-    TMC2209::SerialAddress address;
-    int rxPin;
-    int txPin;
-    const char* name; // Label for logs/UI, e.g. "SAMPLE", "DYE", "WASH"
-};
-
 /**
- * @brief Pump (stepper) control node using the Active Object pattern.
- *
- * Runs the TMC2209 in UART velocity mode. Pumps are open-loop — no homing,
- * no position tracking, no collision detection (no DIAG pins wired).
+ * Pump control node (Active Object). One per Octopus driver slot.
+ * TMC2209 in UART VACTUAL velocity mode, open-loop — no homing, no position.
  */
 class MotorNode : public ActiveMotionNode<MotorCommand, MotorTelemetry> {
 private:
-    MotorConfig config;
+  MotorConfig config;
+  SoftwareSerial swSerial; // one-wire: rx == tx == config.uartPin
+  motorDriver driver;
 
-    // TMC2209 driver instance
-    motorDriver driver;
-
-    int targetSpeed;
-
-    // Speed optimization state tracking (avoid flooding the shared half-duplex UART)
-    int lastSentSpeed;
-
-    bool isEnabled; // Output enabled state
+  int targetSpeed;
+  int lastSentSpeed; // send-on-change guard for the software UART
+  bool isEnabled;
 
 public:
-    MotorNode(const MotorConfig& conf);
+  explicit MotorNode(const MotorConfig &conf);
 
-    // Override base class pure virtuals
-    void hwInit() override;
-    void processCommand(const MotorCommand& cmd) override;
-    void hwUpdate() override;
-    MotorTelemetry generateTelemetry() override;
+  void hwInit() override;
+  void processCommand(const MotorCommand &cmd) override;
+  void hwUpdate() override;
+  MotorTelemetry generateTelemetry() override;
 
-    // Convenience methods for sending commands
-    bool setSpeed(int speed);
-    bool setEnabled(bool enable);
+  bool setSpeed(int speed);
+  bool setEnabled(bool enable);
 };

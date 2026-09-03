@@ -1,61 +1,60 @@
 #pragma once
+#include <Arduino.h>
+#include "core/SystemState.h"
 
 /**
  * @file HardwareConfig.h
- * @brief Master hardware pinout and mapping for the PEACH PULP ESP32 system.
- * 
- * Centralizing pin definitions here prevents collisions and makes porting
- * to new ESP32 boards significantly easier.
+ * @brief Pinout for PEACH PULP on a BigTreeTech Octopus v1.1 (STM32F446ZET6).
+ *
+ * Pin names are the STM32duino "PXn" identifiers. Driver pins match Klipper's
+ * config/generic-bigtreetech-octopus-v1.1.cfg (MOTOR0..MOTOR7).
+ * >>> If this is an Octopus Pro, cross-check against the -pro- config. <<<
  */
 
 // ==========================================
-// I2C Bus (Rotary Encoders / I2C Peripherals)
-// ==========================================
-#define I2C_SCL_PIN 13
-#define I2C_SDA_PIN 14
-#define ENCODER_INT_PIN 27
-#define ENCODER_I2C_ADDR 0x02
-
-// StallGuard DIAG Pins
-#define SG_DIAG1 26
-#define SG_DIAG2 25
-#define SG_DIAG3 33
-
-// Seesaw GPIO pins for encoder buttons (from Adafruit datasheet)
-#define SEESAW_BTN_ENC0 12
-#define SEESAW_BTN_ENC1 14
-#define SEESAW_BTN_ENC2 17
-#define SEESAW_BTN_ENC3 9
-
-// ==========================================
-// SPI Bus (OLED/TFT Display)
-// ==========================================
-#define LCD_SCK     18
-#define LCD_MOSI    23
-#define LCD_CS      19
-#define LCD_DC      21
-#define LCD_RESET   22
-
-// ==========================================
-// Hardware Serial (TMC2209 Stepper Drivers)
+// TMC2209 — VACTUAL velocity mode, per-driver one-wire software UART
 // ==========================================
 #define SERIAL_BAUD_RATE 115200
-#define MOTOR_MIN_SAFE_STEPS 0
-#define MOTOR_MAX_SAFE_STEPS 100000
-#define MOTOR_MAX_SAFE_ACCEL 4000
-#define RUN_CURRENT_PERCENT 100
-#define HOLD_CURRENT_PERCENT 70
+
+// Driver current is set deterministically from the sense resistor (BTT
+// TMC2209 stepstick = 0.11 Ω). Tune RUN_CURRENT_MA for the real pump motors.
+#define SENSE_RESISTOR_OHMS 0.11f
+#define RUN_CURRENT_MA 600           // conservative start; TMC2209 ~1.2 A RMS practical max
+#define HOLD_CURRENT_MULTIPLIER 0.5f // hold = 0.5 × run (lets a syringe be hand-turned)
+
+#define MOTOR_MAX_SAFE_STEPS 100000  // hard clamp in motorDriver::setVelocity
+
+struct MotorConfig {
+  uint32_t uartPin;  // TMC2209 PDN_UART — one-wire SoftwareSerial (write-only)
+  uint32_t enPin;    // TMC2209 EN (active low), via setHardwareEnablePin
+  const char *name;
+};
+
+//                       UART   EN     role
+static const MotorConfig kPumpConfigs[NUM_PUMPS] = {
+    {PC4, PF14, "Sample"},   // MOTOR0  P_SAMPLE
+    {PD11, PF15, "Dye"},     // MOTOR1  P_DYE
+    {PC6, PG5, "Sheath"},    // MOTOR2  P_SHEATH
+    {PC7, PA0, "Wash"},      // MOTOR3  P_WASH
+    {PF2, PG2, "Antibody"},  // MOTOR4  P_ANTIBODY
+    {PE4, PF1, "Wash2"},     // MOTOR5  P_WASH2
+    {PE1, PD4, "Spare6"},    // MOTOR6
+    {PD3, PE0, "Spare7"},    // MOTOR7
+};
 
 // ==========================================
-// Tracking & Integration Constants
+// Hardware E-STOP button — normally-open to GND on a spare endstop input
+// (DIAG0 / "X-STOP" on the Octopus). INPUT_PULLUP, active low.
 // ==========================================
-#define MOTOR_TRACKING_KP 5.0f
-#define MOTOR_TARGET_TOLERANCE 50.0f
-#define MOTOR_LIMIT_DECEL_DIST 50.0f
-#define MOTOR_DEFAULT_JOG_SPEED 5000
-#define STEPPER_VEL_MULT 1.0f
+#define ESTOP_BTN_PIN PG6
 
-// Standard wiring for TMC2209 with 1K resistor bridging TX to RX
-#define TXD1 17 // ESP Transmits on physical TX2 pin (17) -> goes through 1K resistor to RX2
-#define RXD1 16 // ESP Receives on physical RX2 pin (16) -> direct to Driver PDN_UART 
-
+// ==========================================
+// FreeRTOS task stacks (WORDS — vanilla FreeRTOS, unlike the ESP32 byte counts)
+// and priorities. Tune stacks with uxTaskGetStackHighWaterMark during bring-up.
+// ==========================================
+#define STACK_PUMP_NODE 640
+#define STACK_CONTROLLER 768
+#define STACK_SERIAL 768
+#define PRIO_PUMP_NODE 2
+#define PRIO_CONTROLLER 3
+#define PRIO_SERIAL 3

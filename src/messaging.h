@@ -1,39 +1,51 @@
 #pragma once
 #include <stdint.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
+#include "rtos.h"
+#include "core/SystemState.h"
 
 // ============================================================================
-// PUMP (MOTOR) MESSAGING
+// Pump command  (controller_task → MotorNode, one queue per pump)
 // ============================================================================
-
 enum class MotorCmdAction {
-    SET_SPEED,   // Set velocity (int steps/s)
-    GET_STATE,   // Request state (for telemetry response)
-    SET_ENABLED  // Enable/disable motor output
+  SET_SPEED,   // value = signed steps/s (VACTUAL)
+  SET_ENABLED, // value != 0 → holding torque on
 };
 
 struct MotorCommand {
-    MotorCmdAction action;
-    float value;     // Speed value
+  MotorCmdAction action;
+  float value;
 };
 
 struct MotorTelemetry {
-    int targetSpeed;  // Current target speed
-    bool isEnabled;   // True if motor driver output is enabled
+  int targetSpeed;
+  bool isEnabled;
 };
 
-// Sample Pump Queues (TMC2209 address 0)
-extern QueueHandle_t samplePumpCmdQueue;
-extern QueueHandle_t samplePumpTelQueue;
+// ============================================================================
+// Protocol command  (SerialLink → controller_task)
+// Replaces the encoder-driven InputManager mutations.
+// ============================================================================
+enum class ProtoAction {
+  RUN,           // start the protocol from phase 0
+  STOP,          // abort to idle (motion stops; holding torque unchanged)
+  ESTOP,         // same as STOP for now
+  SKIP,          // advance to the next phase immediately
+  SET_SPEED,     // a = pump idx, b = signed steps/s
+  SET_PHASETIME, // a = phase idx, b = seconds (persisted)
+  SET_ENABLE,    // a = pump idx, b = 0/1 holding torque
+  JOG,           // a = pump idx, b = signed steps/s (0 = stop); idle only
+};
 
-// Dye Pump Queues (TMC2209 address 1)
-extern QueueHandle_t dyePumpCmdQueue;
-extern QueueHandle_t dyePumpTelQueue;
+struct ProtoCommand {
+  ProtoAction action;
+  int a;
+  int b;
+};
 
-// Wash Pump Queues (TMC2209 address 2)
-extern QueueHandle_t washPumpCmdQueue;
-extern QueueHandle_t washPumpTelQueue;
-
-// UI snapshot queue (depth-1 mailbox, controller -> LCD_task)
-extern QueueHandle_t lcdDataQueue;
+// ============================================================================
+// Global queue handles (defined in main.cpp)
+// ============================================================================
+extern QueueHandle_t pumpCmdQueue[NUM_PUMPS];
+extern QueueHandle_t pumpTelQueue[NUM_PUMPS];
+extern QueueHandle_t protoCmdQueue; // SerialLink → controller
+extern QueueHandle_t stateQueue;    // controller → SerialLink (depth-1 mailbox)

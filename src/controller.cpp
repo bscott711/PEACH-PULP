@@ -1,46 +1,28 @@
 #include "controller.h"
 #include "messaging.h"
-#include "tasks/MotorNode.h"
-#include "core/InputManager.h"
+#include <string.h>
+#include "core/Protocol.h"
+#include "core/StateSnapshot.h"
 #include "core/StorageManager.h"
-#include "core/NetworkManager.h"
-#include "core/UIData.h"
-#include "drivers/LCDDriver.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "core/Log.h"
+#include "tasks/MotorNode.h"
 
-// Global queue handles (declared extern in controller.h / messaging.h)
-QueueHandle_t samplePumpCmdQueue;
-QueueHandle_t samplePumpTelQueue;
-QueueHandle_t dyePumpCmdQueue;
-QueueHandle_t dyePumpTelQueue;
-QueueHandle_t washPumpCmdQueue;
-QueueHandle_t washPumpTelQueue;
-QueueHandle_t lcdDataQueue;
-
-// Global Node instances (defined in main.cpp, extern here)
-extern MotorNode g_samplePumpNode;
-extern MotorNode g_dyePumpNode;
-extern MotorNode g_washPumpNode;
-
-SemaphoreHandle_t systemStateMutex;
-SemaphoreHandle_t encoderStateMutex;
-EventGroupHandle_t controlEvents;
+// Pump nodes are heap-allocated in main.cpp (SoftwareSerial members must be
+// constructed after the Arduino core init(), not at static-init time).
+extern MotorNode *g_pumps[NUM_PUMPS];
 
 SystemState systemState;
+SemaphoreHandle_t systemStateMutex = NULL;
+EventGroupHandle_t controlEvents = NULL;
+volatile bool g_estopFromISR = false;
 
-static MotorNode* pumpNode(int idx) {
-  switch (idx) {
-    case PUMP_SAMPLE: return &g_samplePumpNode;
-    case PUMP_DYE: return &g_dyePumpNode;
-    default: return &g_washPumpNode;
-  }
-}
+static const char *TAG = "PROTO";
 
+// ============================================================================
+// Init
+// ============================================================================
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
-  encoderStateMutex = xSemaphoreCreateMutex();
   controlEvents = xEventGroupCreate();
 
   StorageManager::init();
@@ -50,151 +32,207 @@ void initSystemState() {
       systemState.pumpSpeedSteps[i] = StorageManager::loadPumpSpeed(i, 5);
       systemState.pumpManualRun[i] = false;
       systemState.pumpEnabled[i] = true;
-      systemState.pumpStepSizeIdx[i] = 0;
     }
-    systemState.t1Seconds = StorageManager::loadT1(60);
-    systemState.t2Seconds = StorageManager::loadT2(30);
-    systemState.menuSel = MENU_START;
-    systemState.inEdit = false;
-    systemState.inMotorMenu = false;
-    systemState.motorMenuSel = 0;
-    systemState.protocolPhase = PROTO_IDLE;
+    for (int p = 0; p < NUM_PHASES; p++) {
+      systemState.phaseSeconds[p] =
+          StorageManager::loadPhaseTime(p, kDefaultPhaseSeconds[p]);
+    }
+    systemState.currentPhase = -1;
     systemState.phaseEndTick = 0;
     systemState.phaseStartTick = 0;
     xSemaphoreGive(systemStateMutex);
   }
-
-  InputManager::init();
 }
 
 // ============================================================================
-// Main Controller Task
+// Protocol commands from SerialLink (replaces InputManager mutations)
 // ============================================================================
+static void startProtocol() {
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) != pdTRUE) return;
+  if (systemState.currentPhase < 0) {
+    TickType_t now = xTaskGetTickCount();
+    systemState.currentPhase = 0;
+    systemState.phaseStartTick = now;
+    systemState.phaseEndTick = now + pdMS_TO_TICKS(systemState.phaseSeconds[0] * 1000);
+    for (int i = 0; i < NUM_PUMPS; i++) {
+      systemState.pumpManualRun[i] = false;
+      systemState.pumpEnabled[i] = true; // a pump left off for jogging must still run
+    }
+    xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+    PEACH_LOGI(TAG, "RUN → %s", kPhaseNames[0]);
+  }
+  xSemaphoreGive(systemStateMutex);
+}
 
-// Debounced NVS writes for pump speeds — avoid flash wear on every detent.
+static void applyProtoCommand(const ProtoCommand &pc) {
+  switch (pc.action) {
+    case ProtoAction::RUN:
+      startProtocol();
+      break;
+
+    case ProtoAction::STOP:
+    case ProtoAction::ESTOP:
+      xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+      break;
+
+    case ProtoAction::SKIP:
+      xEventGroupSetBits(controlEvents, BIT_SKIP_REQUEST);
+      break;
+
+    case ProtoAction::SET_SPEED:
+      if (pc.a >= 0 && pc.a < NUM_PUMPS &&
+          xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+        systemState.pumpSpeedSteps[pc.a] =
+            constrain(pc.b, -PUMP_SPEED_MAX_STEPS, PUMP_SPEED_MAX_STEPS);
+        xSemaphoreGive(systemStateMutex);
+      }
+      break;
+
+    case ProtoAction::SET_PHASETIME:
+      if (pc.a >= 0 && pc.a < NUM_PHASES &&
+          xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+        systemState.phaseSeconds[pc.a] = (uint32_t)constrain(pc.b, 1, 3600);
+        StorageManager::savePhaseTime(pc.a, systemState.phaseSeconds[pc.a]);
+        xSemaphoreGive(systemStateMutex);
+      }
+      break;
+
+    case ProtoAction::SET_ENABLE:
+      if (pc.a >= 0 && pc.a < NUM_PUMPS &&
+          xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+        systemState.pumpEnabled[pc.a] = (pc.b != 0);
+        if (pc.b == 0) systemState.pumpManualRun[pc.a] = false;
+        xSemaphoreGive(systemStateMutex);
+      }
+      break;
+
+    case ProtoAction::JOG:
+      if (pc.a >= 0 && pc.a < NUM_PUMPS &&
+          xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+        if (systemState.currentPhase < 0) { // manual jog only while idle
+          systemState.pumpManualRun[pc.a] = (pc.b != 0);
+          if (pc.b != 0) {
+            systemState.pumpSpeedSteps[pc.a] =
+                constrain(pc.b, -PUMP_SPEED_MAX_STEPS, PUMP_SPEED_MAX_STEPS);
+          }
+        }
+        xSemaphoreGive(systemStateMutex);
+      }
+      break;
+  }
+}
+
+// ============================================================================
+// Main controller task — 50 Hz
+// ============================================================================
 static const uint32_t SPEED_SAVE_DEBOUNCE_MS = 2000;
-static int lastSavedSpeed[NUM_PUMPS];
-static uint32_t speedDirtySince[NUM_PUMPS] = {0, 0, 0};
-static bool lastAppliedEnabled[NUM_PUMPS] = {true, true, true};
-
-static const char* kPhaseLogNames[3] = {"IDLE", "PHASE1(Sample+Dye)", "PHASE2(Dye+Wash)"};
 
 void controller_task(void *pvParameters) {
+  (void)pvParameters;
   TickType_t lastWakeTime = xTaskGetTickCount();
-  const TickType_t CONTROLLER_INTERVAL = pdMS_TO_TICKS(20);
+  const TickType_t INTERVAL = pdMS_TO_TICKS(20);
 
+  int lastSavedSpeed[NUM_PUMPS];
+  uint32_t speedDirtySince[NUM_PUMPS];
+  bool lastAppliedEnabled[NUM_PUMPS];
   for (int i = 0; i < NUM_PUMPS; i++) {
     lastSavedSpeed[i] = systemState.pumpSpeedSteps[i];
+    speedDirtySince[i] = 0;
+    lastAppliedEnabled[i] = systemState.pumpEnabled[i];
   }
 
-  while (1) {
-    InputManager::process();
+  for (;;) {
+    // 1. protocol commands from SerialLink
+    ProtoCommand pc;
+    while (xQueueReceive(protoCmdQueue, &pc, 0) == pdTRUE) applyProtoCommand(pc);
+
+    // 2. hardware E-STOP button
+    if (g_estopFromISR) {
+      g_estopFromISR = false;
+      xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+    }
 
     TickType_t now = xTaskGetTickCount();
-    bool estopRequested = (xEventGroupGetBits(controlEvents) & BIT_ESTOP_REQUEST) != 0;
-    bool skipRequested = (xEventGroupGetBits(controlEvents) & BIT_SKIP_REQUEST) != 0;
+    bool estop = (xEventGroupGetBits(controlEvents) & BIT_ESTOP_REQUEST) != 0;
+    bool skip = (xEventGroupGetBits(controlEvents) & BIT_SKIP_REQUEST) != 0;
 
-    UIData uiData = {};
-    int targetSteps[NUM_PUMPS] = {0, 0, 0};
-    char phaseMsgBuf[32];
-    const char* phaseMessage = nullptr;
+    int targetSteps[NUM_PUMPS];
+    for (int i = 0; i < NUM_PUMPS; i++) targetSteps[i] = 0;
+    StateSnapshot snap;
+    memset(&snap, 0, sizeof(snap));
+    snap.currentPhase = -1; // safe default if the state lock times out
 
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      // --- Two-phase protocol state machine ---
-      bool phaseExpired = (now >= systemState.phaseEndTick) || skipRequested;
-      if (estopRequested && systemState.protocolPhase != PROTO_IDLE) {
-        uint32_t elapsedS = (uint32_t)((now - systemState.phaseStartTick) * portTICK_PERIOD_MS) / 1000;
-        PEACH_LOGI("PROTO", "%s stopped (E-STOP) after %us", kPhaseLogNames[systemState.protocolPhase], (unsigned)elapsedS);
-        snprintf(phaseMsgBuf, sizeof(phaseMsgBuf), "STOPPED (%us)", (unsigned)elapsedS);
-        phaseMessage = phaseMsgBuf;
-        systemState.protocolPhase = PROTO_IDLE;
-      } else if (systemState.protocolPhase == PROTO_PHASE1 && phaseExpired) {
-        uint32_t elapsedS = (uint32_t)((now - systemState.phaseStartTick) * portTICK_PERIOD_MS) / 1000;
-        PEACH_LOGI("PROTO", "%s ran %us", kPhaseLogNames[PROTO_PHASE1], (unsigned)elapsedS);
-        systemState.protocolPhase = PROTO_PHASE2;
-        systemState.phaseStartTick = now;
-        systemState.phaseEndTick = now + pdMS_TO_TICKS(systemState.t2Seconds * 1000);
-        snprintf(phaseMsgBuf, sizeof(phaseMsgBuf), "PHASE 2 (P1:%us)", (unsigned)elapsedS);
-        phaseMessage = phaseMsgBuf;
-      } else if (systemState.protocolPhase == PROTO_PHASE2 && phaseExpired) {
-        uint32_t elapsedS = (uint32_t)((now - systemState.phaseStartTick) * portTICK_PERIOD_MS) / 1000;
-        PEACH_LOGI("PROTO", "%s ran %us", kPhaseLogNames[PROTO_PHASE2], (unsigned)elapsedS);
-        systemState.protocolPhase = PROTO_IDLE;
-        snprintf(phaseMsgBuf, sizeof(phaseMsgBuf), "DONE (P2:%us)", (unsigned)elapsedS);
-        phaseMessage = phaseMsgBuf;
+      // --- phase state machine ---
+      if (estop && systemState.currentPhase >= 0) {
+        PEACH_LOGI(TAG, "E-STOP during %s", kPhaseNames[systemState.currentPhase]);
+        systemState.currentPhase = -1;
+        for (int i = 0; i < NUM_PUMPS; i++) systemState.pumpManualRun[i] = false;
+      } else if (systemState.currentPhase >= 0 &&
+                 (now >= systemState.phaseEndTick || skip)) {
+        int next = systemState.currentPhase + 1;
+        if (next >= NUM_PHASES) {
+          PEACH_LOGI(TAG, "protocol complete");
+          systemState.currentPhase = -1;
+        } else {
+          systemState.currentPhase = next;
+          systemState.phaseStartTick = now;
+          systemState.phaseEndTick =
+              now + pdMS_TO_TICKS(systemState.phaseSeconds[next] * 1000);
+          PEACH_LOGI(TAG, "→ %s", kPhaseNames[next]);
+        }
       }
 
-      // --- Compute per-pump targets for this cycle ---
-      switch (systemState.protocolPhase) {
-        case PROTO_PHASE1:
-          targetSteps[PUMP_SAMPLE] = systemState.pumpSpeedSteps[PUMP_SAMPLE];
-          targetSteps[PUMP_DYE] = systemState.pumpSpeedSteps[PUMP_DYE];
-          targetSteps[PUMP_WASH] = 0;
-          break;
-        case PROTO_PHASE2:
-          targetSteps[PUMP_SAMPLE] = 0;
-          targetSteps[PUMP_DYE] = systemState.pumpSpeedSteps[PUMP_DYE];
-          targetSteps[PUMP_WASH] = systemState.pumpSpeedSteps[PUMP_WASH];
-          break;
-        default: // PROTO_IDLE — manual per-pump run
-          for (int i = 0; i < NUM_PUMPS; i++) {
-            targetSteps[i] = systemState.pumpManualRun[i] ? systemState.pumpSpeedSteps[i] : 0;
-          }
-          break;
-      }
-
-      if (systemState.protocolPhase == PROTO_IDLE) {
+      // --- per-pump targets for this cycle ---
+      if (systemState.currentPhase >= 0) {
+        uint8_t mask = kProtocol[systemState.currentPhase].activeMask;
+        for (int i = 0; i < NUM_PUMPS; i++) {
+          targetSteps[i] = (mask & PUMP_BIT(i)) ? systemState.pumpSpeedSteps[i] : 0;
+        }
+      } else {
         xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);
+        for (int i = 0; i < NUM_PUMPS; i++) {
+          targetSteps[i] = systemState.pumpManualRun[i] ? systemState.pumpSpeedSteps[i] : 0;
+        }
       }
 
-      // --- Snapshot for the LCD ---
+      // --- snapshot ---
+      snap.currentPhase = systemState.currentPhase;
+      snap.phaseRemainingS =
+          (systemState.currentPhase >= 0 && now < systemState.phaseEndTick)
+              ? (uint32_t)((systemState.phaseEndTick - now) * portTICK_PERIOD_MS) / 1000
+              : 0;
       for (int i = 0; i < NUM_PUMPS; i++) {
-        uiData.pumpSpeedSteps[i] = systemState.pumpSpeedSteps[i];
-        uiData.pumpRunning[i] = (targetSteps[i] != 0);
-        uiData.pumpEnabled[i] = systemState.pumpEnabled[i];
+        snap.pumpSpeedSteps[i] = systemState.pumpSpeedSteps[i];
+        snap.pumpRunning[i] = (targetSteps[i] != 0);
+        snap.pumpEnabled[i] = systemState.pumpEnabled[i];
       }
-      uiData.t1S = systemState.t1Seconds;
-      uiData.t2S = systemState.t2Seconds;
-      uiData.menuSel = systemState.menuSel;
-      uiData.inEdit = systemState.inEdit;
-      uiData.inMotorMenu = systemState.inMotorMenu;
-      uiData.motorMenuSel = systemState.motorMenuSel;
-      uiData.phase = systemState.protocolPhase;
-      uiData.phaseRemainingS = (systemState.protocolPhase != PROTO_IDLE && now < systemState.phaseEndTick)
-                                   ? (uint32_t)((systemState.phaseEndTick - now) * portTICK_PERIOD_MS) / 1000
-                                   : 0;
-
+      for (int p = 0; p < NUM_PHASES; p++) snap.phaseSeconds[p] = systemState.phaseSeconds[p];
       xSemaphoreGive(systemStateMutex);
     }
 
-    if (estopRequested) {
-      xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
-    }
-    if (skipRequested) {
-      xEventGroupClearBits(controlEvents, BIT_SKIP_REQUEST);
-    }
-    if (phaseMessage != nullptr) {
-      LCD_setMessage(phaseMessage);
-    }
+    if (estop) xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
+    if (skip) xEventGroupClearBits(controlEvents, BIT_SKIP_REQUEST);
+    snap.estopLatched = estop;
 
-    // Apply speed + enable commands to pumps (controller_task is the sole writer)
+    // 3. apply to pumps (controller_task is the sole speed writer)
     for (int i = 0; i < NUM_PUMPS; i++) {
-      pumpNode(i)->setSpeed(targetSteps[i]);
-      if (uiData.pumpEnabled[i] != lastAppliedEnabled[i]) {
-        pumpNode(i)->setEnabled(uiData.pumpEnabled[i]);
-        lastAppliedEnabled[i] = uiData.pumpEnabled[i];
+      g_pumps[i]->setSpeed(targetSteps[i]);
+      if (snap.pumpEnabled[i] != lastAppliedEnabled[i]) {
+        g_pumps[i]->setEnabled(snap.pumpEnabled[i]);
+        lastAppliedEnabled[i] = snap.pumpEnabled[i];
       }
     }
 
-    // Debounced NVS persistence for pump speeds
+    // 4. debounced persistence of pump speeds
     uint32_t nowMs = xTaskGetTickCount() * portTICK_PERIOD_MS;
     for (int i = 0; i < NUM_PUMPS; i++) {
-      if (uiData.pumpSpeedSteps[i] != lastSavedSpeed[i]) {
+      if (snap.pumpSpeedSteps[i] != lastSavedSpeed[i]) {
         if (speedDirtySince[i] == 0) {
           speedDirtySince[i] = nowMs;
         } else if (nowMs - speedDirtySince[i] >= SPEED_SAVE_DEBOUNCE_MS) {
-          StorageManager::savePumpSpeed(i, uiData.pumpSpeedSteps[i]);
-          lastSavedSpeed[i] = uiData.pumpSpeedSteps[i];
+          StorageManager::savePumpSpeed(i, snap.pumpSpeedSteps[i]);
+          lastSavedSpeed[i] = snap.pumpSpeedSteps[i];
           speedDirtySince[i] = 0;
         }
       } else {
@@ -202,12 +240,9 @@ void controller_task(void *pvParameters) {
       }
     }
 
-    // Publish UI snapshot
-    uiData.wifiConnected = NetworkManager::isConnected();
-    if (lcdDataQueue != NULL) {
-      xQueueOverwrite(lcdDataQueue, &uiData);
-    }
+    // 5. publish snapshot for SerialLink
+    if (stateQueue != NULL) xQueueOverwrite(stateQueue, &snap);
 
-    vTaskDelayUntil(&lastWakeTime, CONTROLLER_INTERVAL);
+    vTaskDelayUntil(&lastWakeTime, INTERVAL);
   }
 }

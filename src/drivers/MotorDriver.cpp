@@ -1,34 +1,29 @@
 #include "drivers/MotorDriver.h"
-#include "controller.h"
+#include "rtos.h"
 
-void motorDriver::begin(HardwareSerial &serial,
-                        TMC2209::SerialAddress address, int rxPin, int txPin) {
-  // Setup TMC2209 passing -1, -1 so the library doesn't mess with the GPIO matrix globally set up in main.cpp
-  driver.setup(serial, SERIAL_BAUD_RATE, address, -1, -1);
+void motorDriver::begin(SoftwareSerial &serial, uint32_t enPin) {
+  // SoftwareSerial overload — address 0 (each driver has its own one-wire link).
+  // Any internal read attempts during setup() time out harmlessly on a
+  // write-only link; VACTUAL / config writes are what matter.
+  driver.setup(serial, SERIAL_BAUD_RATE);
 
-  driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  // TMC2209::initialize() (inside driver.setup() above) zeroes IHOLD via its
-  // internal minimizeMotorCurrent() and never restores it, so without this
-  // call idle motors silently drop to 0% hold current a moment after boot.
-  driver.setHoldCurrent(HOLD_CURRENT_PERCENT);
+  driver.setHardwareEnablePin(enPin);
+
+  driver.setRMSCurrent(RUN_CURRENT_MA, SENSE_RESISTOR_OHMS, HOLD_CURRENT_MULTIPLIER);
   driver.disableAnalogCurrentScaling();
-
   driver.disableCoolStep();
   driver.enableStealthChop();
   driver.setMicrostepsPerStep(16);
   driver.setCoolStepDurationThreshold(0);
 
-  driver.setStallGuardThreshold(16);
-
   driver.enable();
-
   driver.moveAtVelocity(0);
-  vTaskDelay(pdMS_TO_TICKS(200));
 }
 
 void motorDriver::setVelocity(int newSpeed) {
   newSpeed = constrain(newSpeed, -MOTOR_MAX_SAFE_STEPS, MOTOR_MAX_SAFE_STEPS);
 
+  // Sign selects direction via the shaft bit (mapping fixed in commit 3979330).
   if (newSpeed > 0) {
     driver.enableInverseMotorDirection();
   } else {
@@ -38,52 +33,5 @@ void motorDriver::setVelocity(int newSpeed) {
 }
 
 void motorDriver::stop() { driver.moveAtVelocity(0); }
-
 void motorDriver::enable() { driver.enable(); }
-
 void motorDriver::disable() { driver.disable(); }
-
-void motorDriver::setupHoming() {
-  // Serial.println("Starting Hardware Sensorless Homing...");
-
-  driver.setRunCurrent(70);
-  driver.enableStealthChop();
-  driver.setCoolStepDurationThreshold(1048575);
-  driver.setStallGuardThreshold(15);
-}
-
-void motorDriver::finishHoming(int restoreThreshold) {
-  driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  driver.enableStealthChop();
-  driver.setCoolStepDurationThreshold(0);
-  updateSGThreshold(restoreThreshold);
-}
-
-void motorDriver::updateSGThreshold(int newThreshold) {
-  newThreshold = constrain(newThreshold, 0, 255);
-  driver.setStallGuardThreshold(newThreshold);
-}
-
-bool motorDriver::isSetupAndCommunicating() {
-  return driver.isSetupAndCommunicating();
-}
-
-bool motorDriver::isCommunicating() {
-  return driver.isCommunicating();
-}
-
-uint8_t motorDriver::getVersion() {
-  return driver.getVersion();
-}
-
-bool motorDriver::hardwareDisabled() {
-  return driver.hardwareDisabled();
-}
-
-TMC2209::Status motorDriver::getStatus() {
-  return driver.getStatus();
-}
-
-TMC2209::GlobalStatus motorDriver::getGlobalStatus() {
-  return driver.getGlobalStatus();
-}

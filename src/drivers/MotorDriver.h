@@ -1,30 +1,18 @@
 #pragma once
+#include <SoftwareSerial.h>
 #include <TMC2209.h>
 #include "HardwareConfig.h"
 
-#define TASK_UPDATE_MOTOR 10
-
+// Thin wrapper over the janelia TMC2209 library, driving the chip in UART
+// VACTUAL velocity mode over a per-driver one-wire SoftwareSerial (write-only:
+// VACTUAL and all config are unidirectional writes).
 class motorDriver {
 public:
-  void begin(HardwareSerial &serial, TMC2209::SerialAddress address, int rxPin, int txPin);
-  void setVelocity(int newSpeed);
+  void begin(SoftwareSerial &serial, uint32_t enPin);
+  void setVelocity(int newSpeed); // signed steps/s
   void stop();
   void enable();
   void disable();
-
-  // Replaced blocking homing with state machine hooks
-  void setupHoming();
-  void finishHoming(int restoreThreshold);
-
-  void updateSGThreshold(int newThreshold);
-
-  bool isSetupAndCommunicating();
-  bool isCommunicating();
-  uint8_t getVersion();
-  bool hardwareDisabled();
-  TMC2209::Status getStatus();
-  TMC2209::GlobalStatus getGlobalStatus();
-
 
 private:
   TMC2209 driver;

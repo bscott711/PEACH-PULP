@@ -1,0 +1,130 @@
+#include "core/SerialLink.h"
+#include "core/StateSnapshot.h"
+#include "messaging.h"
+#include <Arduino.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+
+SemaphoreHandle_t g_serialMutex = nullptr;
+
+static void emitLine(const char *s) {
+  bool locked = (g_serialMutex != nullptr &&
+                 xSemaphoreTake(g_serialMutex, pdMS_TO_TICKS(20)) == pdTRUE);
+  Serial.println(s);
+  if (locked) xSemaphoreGive(g_serialMutex);
+}
+
+// Returns next whitespace-delimited token as int; *ok=false if absent.
+static int nextInt(bool *ok) {
+  char *t = strtok(nullptr, " \t\r\n");
+  if (!t) { *ok = false; return 0; }
+  *ok = true;
+  return atoi(t);
+}
+
+static void post(ProtoAction action, int a = 0, int b = 0) {
+  ProtoCommand pc{action, a, b};
+  if (protoCmdQueue) xQueueSend(protoCmdQueue, &pc, 0);
+}
+
+static void parseLine(char *line) {
+  char *cmd = strtok(line, " \t\r\n");
+  if (!cmd) return;
+
+  if (!strcasecmp(cmd, "PING")) {
+    emitLine("PONG");
+  } else if (!strcasecmp(cmd, "RUN")) {
+    post(ProtoAction::RUN);
+  } else if (!strcasecmp(cmd, "STOP")) {
+    post(ProtoAction::STOP);
+  } else if (!strcasecmp(cmd, "ESTOP")) {
+    post(ProtoAction::ESTOP);
+  } else if (!strcasecmp(cmd, "SKIP")) {
+    post(ProtoAction::SKIP);
+  } else if (!strcasecmp(cmd, "STATE")) {
+    // telemetry is emitted continuously; nothing to do
+  } else if (!strcasecmp(cmd, "SPEED")) {
+    bool o1, o2;
+    int idx = nextInt(&o1), v = nextInt(&o2);
+    if (o1 && o2) post(ProtoAction::SET_SPEED, idx, v);
+    else emitLine("!ERR SPEED <idx> <steps>");
+  } else if (!strcasecmp(cmd, "PHASETIME")) {
+    bool o1, o2;
+    int ph = nextInt(&o1), s = nextInt(&o2);
+    if (o1 && o2) post(ProtoAction::SET_PHASETIME, ph, s);
+    else emitLine("!ERR PHASETIME <phase> <sec>");
+  } else if (!strcasecmp(cmd, "ENABLE")) {
+    bool o1, o2;
+    int idx = nextInt(&o1), en = nextInt(&o2);
+    if (o1 && o2) post(ProtoAction::SET_ENABLE, idx, en);
+    else emitLine("!ERR ENABLE <idx> <0|1>");
+  } else if (!strcasecmp(cmd, "JOG")) {
+    bool o1, o2;
+    int idx = nextInt(&o1), v = nextInt(&o2);
+    if (o1 && o2) post(ProtoAction::JOG, idx, v);
+    else emitLine("!ERR JOG <idx> <steps>");
+  } else {
+    emitLine("!ERR unknown command");
+  }
+}
+
+static void emitTelemetry(const StateSnapshot &s) {
+  char j[384];
+  int n = snprintf(j, sizeof(j),
+                   "{\"phase\":%d,\"remaining\":%lu,\"estop\":%s,\"pumps\":[",
+                   s.currentPhase, (unsigned long)s.phaseRemainingS,
+                   s.estopLatched ? "true" : "false");
+  for (int i = 0; i < NUM_PUMPS && n < (int)sizeof(j); i++) {
+    n += snprintf(j + n, sizeof(j) - n, "%s{\"sp\":%d,\"run\":%d,\"en\":%d}",
+                  i ? "," : "", s.pumpSpeedSteps[i], s.pumpRunning[i] ? 1 : 0,
+                  s.pumpEnabled[i] ? 1 : 0);
+  }
+  if (n < (int)sizeof(j)) snprintf(j + n, sizeof(j) - n, "]}");
+  emitLine(j);
+}
+
+void serialLinkTask(void *pvParameters) {
+  (void)pvParameters;
+  char buf[96];
+  size_t len = 0;
+  int lastPhase = -2;
+  TickType_t lastTelem = xTaskGetTickCount();
+
+  for (;;) {
+    while (Serial.available() > 0) {
+      char c = (char)Serial.read();
+      if (c == '\n' || c == '\r') {
+        if (len > 0) {
+          buf[len] = '\0';
+          parseLine(buf);
+          len = 0;
+        }
+      } else if (len < sizeof(buf) - 1) {
+        buf[len++] = c;
+      } else {
+        len = 0; // overflow — drop the line
+      }
+    }
+
+    if (xTaskGetTickCount() - lastTelem >= pdMS_TO_TICKS(200)) {
+      lastTelem = xTaskGetTickCount();
+      StateSnapshot s;
+      if (stateQueue && xQueuePeek(stateQueue, &s, 0) == pdTRUE) {
+        if (s.currentPhase != lastPhase) {
+          char ev[24];
+          if (s.currentPhase < 0 && lastPhase >= 0)
+            snprintf(ev, sizeof(ev), "!EVENT done");
+          else
+            snprintf(ev, sizeof(ev), "!EVENT phase %d", s.currentPhase);
+          emitLine(ev);
+          lastPhase = s.currentPhase;
+        }
+        emitTelemetry(s);
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
