@@ -18,6 +18,14 @@ static void jumpToSysmem() {
   SysTick->LOAD = 0;
   SysTick->VAL = 0;
 
+  // Force a USB disconnect so the host re-enumerates the ROM DFU device cleanly.
+  __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
+  USB_OTG_FS->GCCFG = 0; // power down the FS PHY -> D+ pull-up released
+  for (volatile uint32_t d = 0; d < 400000; d++) {
+    __NOP();
+  }
+  __HAL_RCC_USB_OTG_FS_CLK_DISABLE();
+
   HAL_RCC_DeInit();
   HAL_DeInit();
 
