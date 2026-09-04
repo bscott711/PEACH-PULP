@@ -49,15 +49,17 @@ fi
 
 if [ -n "$PORT" ] && [ -e "$PORT" ]; then
     echo "== $PORT: asking the firmware to enter DFU =="
-    stty -F "$PORT" 115200 cs8 -cstopb -parenb -hupcl -echo raw 2>/dev/null \
-        || stty -f "$PORT" 115200 cs8 -cstopb -parenb -hupcl -echo raw
-    printf 'DFU\r\n' > "$PORT"
+    # best-effort: the port can legitimately vanish mid-write if the board is
+    # already mid-reset from an earlier trigger — don't let that abort the script.
+    { stty -F "$PORT" 115200 cs8 -cstopb -parenb -hupcl -echo raw 2>/dev/null \
+        || stty -f "$PORT" 115200 cs8 -cstopb -parenb -hupcl -echo raw; } || true
+    printf 'DFU\r\n' > "$PORT" 2>/dev/null || true
 else
     echo "== no serial port — assuming the board is already in DFU =="
 fi
 
 echo "== waiting for the ROM bootloader (0483:df11) =="
-for _ in $(seq 1 30); do
+for _ in $(seq 1 50); do
     "$DFU_UTIL" -l 2>/dev/null | grep -q "0483:df11" && { found=1; break; }
     sleep 0.5
 done
