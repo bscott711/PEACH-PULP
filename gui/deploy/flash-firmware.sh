@@ -6,10 +6,13 @@
 # bootloader), waits for the DFU device, flashes 0x08000000, and boots the new
 # image. Same USB cable, no BOOT0 jumper, no reset button.
 #
+#   deploy/flash-firmware.sh --latest [/dev/ttyACM0]   # download + flash the newest release
 #   deploy/flash-firmware.sh [firmware.bin] [/dev/ttyACM0]
 #
-# Get firmware.bin onto the Pi first (built on the dev machine with
-# `pio run -e octopus_f446`): scp it over, or download a GitHub release asset.
+# --latest pulls the firmware.bin asset off the newest GitHub release of this
+# repo (built + published from the dev machine: `pio run -e octopus_f446` then
+# `gh release create fw-<sha> .pio/build/octopus_f446/firmware.bin --target
+# breaking/octopus-stm32-fw`). Otherwise pass a local path (scp'd over, etc).
 # Needs dfu-util:  sudo apt install -y dfu-util
 #
 # If the board is bricked: BOOT0 jumper (J75) + hold RST, then run this with no
@@ -17,10 +20,23 @@
 #
 set -euo pipefail
 
-BIN="${1:-$HOME/firmware.bin}"
-PORT="${2:-}"
+LATEST_URL="https://github.com/bscott711/PEACH-PULP/releases/latest/download/firmware.bin"
 
-[ -f "$BIN" ] || { echo "no firmware at: $BIN  (pass the path as arg 1)" >&2; exit 1; }
+BIN="$HOME/firmware.bin"
+PORT=""
+
+if [ "${1:-}" = "--latest" ]; then
+    shift
+    BIN="${TMPDIR:-/tmp}/peach-firmware-latest.bin"
+    echo "== downloading latest firmware release =="
+    curl -fsSL -o "$BIN" "$LATEST_URL"
+    echo "  -> $BIN ($(wc -c < "$BIN") bytes)"
+elif [ -n "${1:-}" ]; then
+    BIN="$1"; shift
+fi
+[ -n "${1:-}" ] && PORT="$1"
+
+[ -f "$BIN" ] || { echo "no firmware at: $BIN  (pass a path, or --latest)" >&2; exit 1; }
 
 DFU_UTIL="$(command -v dfu-util || true)"
 [ -z "$DFU_UTIL" ] && { echo "dfu-util not found:  sudo apt install -y dfu-util" >&2; exit 1; }

@@ -23,6 +23,21 @@ Adds a **PEACH PULP** app-menu entry and desktop icon (double-tap to open), and 
 the GUI fullscreen on the touchscreen at every boot. Without `--autostart` you just get
 the icons; `--off` removes everything. No sudo. `deploy/launch.sh` starts it by hand.
 
+### Octopus firmware updates — jumper-free
+
+The firmware (`breaking/octopus-stm32-fw`) has a `DFU` serial command that reboots it into
+the STM32 ROM bootloader — no BOOT0 jumper, no reset button. From the Pi:
+
+```bash
+sudo apt install -y dfu-util   # once
+~/PEACH-PULP/gui/deploy/flash-firmware.sh --latest
+```
+
+Downloads the newest `firmware.bin` published on a GitHub release of the repo and flashes it
+over the same USB cable. Pass a local path instead of `--latest` to flash a specific build. If
+the board is bricked (predates the `DFU` command, or won't boot): BOOT0 jumper (`J75`) + hold
+`RST`, then run the same command with no serial port connected.
+
 ## Pull the latest onto the Pi
 
 Run this whenever you want the newest code on the Pi — it force-syncs the checkout
@@ -66,7 +81,7 @@ and demoable without an Octopus.
 | `peachpulp/app.py` | `MainWindow` — tabs + RUN/SKIP/STOP footer + workspace lifecycle |
 | `run.py` | entry point / CLI |
 | `tests/` | pytest — pure modules only (no Qt); `test_wire_contract.py` guards the firmware protocol |
-| `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install-launcher.sh` + `launch.sh` (icon/autostart), `install.sh`, `peach-pulp-gui.service` |
+| `deploy/` | `pi-bootstrap.sh`, `pi-update.sh`, `install-launcher.sh` + `launch.sh` (icon/autostart), `flash-firmware.sh` (jumper-free Octopus flashing), `octo.py` (serial console), `install.sh`, `peach-pulp-gui.service` |
 
 ## Screen
 
