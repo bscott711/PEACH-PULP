@@ -104,7 +104,8 @@ Line-based ASCII over USB CDC, `\n`-terminated.
 on every edit and once on connect.
 
 **Octopus → Pi:** JSON telemetry ~5 Hz —
-`{"phase":1,"nphases":5,"remaining":42,"pumps":[{"sp":..,"run":..,"en":..}]}`;
+`{"phase":1,"nphases":5,"remaining":42,"pumps":[{"sp":..,"run":..,"en":..,"ok":..}]}`
+(`ok` 0 = that driver isn't answering on UART / running blind on defaults);
 events `!EVENT phase 2` / `!EVENT done` / `!EVENT prog <n>` / `!ERR <msg>`; logs `# ...`.
 
 Implemented in `src/core/SerialLink.*`, which replaces `src/core/NetworkManager.*`. Parsed

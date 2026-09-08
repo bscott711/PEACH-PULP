@@ -147,6 +147,7 @@ class PumpState:
     speed: int = 0
     running: bool = False
     enabled: bool = True
+    comm_ok: bool = True  # firmware "ok": driver answered on UART (else running blind)
 
 
 @dataclass
@@ -204,6 +205,7 @@ def parse_line(line: str) -> ParsedLine:
                 speed=int(p.get("sp", 0)),
                 running=bool(p.get("run", 0)),
                 enabled=bool(p.get("en", 0)),
+                comm_ok=bool(p.get("ok", 1)),  # absent on older firmware → healthy
             )
         return ("telemetry", t)
     return None

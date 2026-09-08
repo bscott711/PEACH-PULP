@@ -73,6 +73,13 @@ def test_timeout_flags_bad_and_retries(row):
     assert _state(row) == ("free", "ok")
 
 
+def test_blind_driver_marks_the_dot(row):
+    row.apply_state(P.PumpState(comm_ok=False), protocol_running=False)
+    assert "blind" in row._dot.toolTip()
+    row.apply_state(P.PumpState(comm_ok=True), protocol_running=False)
+    assert row._dot.toolTip() == ""
+
+
 def test_running_sequence_clears_pending_and_mirrors(row):
     row._hold.click()  # -> Free, pending
     row.apply_state(P.PumpState(enabled=True, running=True), protocol_running=True)

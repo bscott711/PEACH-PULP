@@ -233,7 +233,16 @@ class PumpRow(QFrame):
 
     # ---- driven by telemetry ----------------------------------------
     def apply_state(self, st: P.PumpState, protocol_running: bool) -> None:
-        self._dot.setStyleSheet("color:#2ecc71;" if st.running else "color:#5b6472;")
+        if not st.comm_ok:
+            self._dot.setStyleSheet("color:#e74c3c;")   # driver not answering on UART
+            self._dot.setToolTip(
+                "no UART read-back — this driver is running blind on defaults"
+            )
+        else:
+            self._dot.setStyleSheet(
+                "color:#2ecc71;" if st.running else "color:#5b6472;"
+            )
+            self._dot.setToolTip("")
 
         # --- Hold/Free ------------------------------------------------
         if protocol_running:

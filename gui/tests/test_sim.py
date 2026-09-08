@@ -72,6 +72,7 @@ def test_stop_halts_the_sequence():
     assert t.phase == -1
     assert not any(p.running for p in t.pumps)
     assert all(p.enabled for p in t.pumps)  # drivers stay energized
+    assert all(p.comm_ok for p in t.pumps)  # sim drivers always answer
     fw.feed("RUN")  # recoverable
     assert _telem(fw).phase == 0
 

@@ -138,7 +138,9 @@ class FakeFirmware:
             else:
                 sp = self.live_speeds[i]
                 run = self.manual[i] and sp != 0
-            pumps.append({"sp": sp, "run": int(run), "en": int(self.enabled[i])})
+            pumps.append(
+                {"sp": sp, "run": int(run), "en": int(self.enabled[i]), "ok": 1}
+            )
         return json.dumps(
             {
                 "phase": self.phase,

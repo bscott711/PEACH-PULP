@@ -70,8 +70,11 @@ def test_cmd_program_upload_sequence():
 
 # --- firmware telemetry (SerialLink.cpp emitTelemetry) -----------------------
 def _fw_telemetry(phase, nphases, remaining, pumps):
+    # each pump: (sp, run, en) or (sp, run, en, ok)  — "ok" defaults to 1
     body = ",".join(
-        '{"sp":%d,"run":%d,"en":%d}' % (sp, r, e) for sp, r, e in pumps
+        '{"sp":%d,"run":%d,"en":%d,"ok":%d}'
+        % (p[0], p[1], p[2], p[3] if len(p) > 3 else 1)
+        for p in pumps
     )
     return (
         '{"phase":%d,"nphases":%d,"remaining":%d,"pumps":[%s]}'
@@ -97,6 +100,23 @@ def test_gui_parses_firmware_idle_telemetry():
     kind, t = P.parse_line(_fw_telemetry(-1, 4, 0, [(0, 0, 1)] * 8))
     assert kind == "telemetry" and not t.running
     assert t.phase_label == "Idle"
+
+
+def test_gui_parses_driver_comm_health():
+    # emitTelemetry() adds "ok": per-driver UART read-back (0 = running blind)
+    pumps = [(0, 0, 1, 1)] * 7 + [(0, 0, 1, 0)]
+    _, t = P.parse_line(_fw_telemetry(-1, 4, 0, pumps))
+    assert all(p.comm_ok for p in t.pumps[:7])
+    assert not t.pumps[7].comm_ok
+
+
+def test_missing_ok_key_defaults_healthy():
+    # firmware predating the "ok" field — GUI must not flag every driver
+    raw = '{"phase":-1,"nphases":4,"remaining":0,"pumps":[%s]}' % ",".join(
+        ['{"sp":0,"run":0,"en":1}'] * 8
+    )
+    _, t = P.parse_line(raw)
+    assert all(p.comm_ok for p in t.pumps)
 
 
 def test_gui_parses_firmware_events():
