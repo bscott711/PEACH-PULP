@@ -35,13 +35,14 @@
 // this heals it without the operator having to toggle Hold/Free in the GUI.
 #define DRIVER_REASSERT_MS 5000
 
-// Turn each one-wire link around to read GCONF/CHOPCONF back — at boot (log what
-// actually stuck: StealthChop, microsteps, run current) and on every reassert
-// tick (warn once if a driver goes dark mid-run, note once when it returns). So
-// a slot that never accepts its UART config is obvious in the log instead of
-// just audibly wrong. Diagnostics only: software-UART RX timing under FreeRTOS
-// is not guaranteed and this never gates motion. Set 0 to skip the read-back.
-#define DRIVER_VERIFY 1
+// Read-back over the one-wire link (GCONF/CHOPCONF) for diagnostics: boot log
+// lines + a per-pump "ok" flag in telemetry. OFF by default — bit-banged
+// half-duplex RX proved unreliable under FreeRTOS on this hardware at both
+// 115200 and 19200 baud (every driver read as "not communicating" even though
+// the blind config writes clearly land — motors run quiet). TX is fine, so
+// motion and the 5 s self-heal below are unaffected. Set to 1 only if you move
+// the TMC UART onto a hardware half-duplex peripheral.
+#define DRIVER_VERIFY 0
 
 struct MotorConfig {
   uint32_t uartPin;  // TMC2209 PDN_UART — one-wire SoftwareSerial (write-only)
