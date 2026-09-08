@@ -149,16 +149,20 @@ def _qss(c: _Colors) -> str:
     }}
     QPushButton#ghostbtn:hover {{ color: {c.accent}; border-color: {c.accent}; }}
 
-    /* per-motor holding-torque toggle: Hold = normal, Free = amber (loose shaft) */
-    QPushButton#holdtoggle {{ font-weight: 700; }}
-    QPushButton#holdtoggle:checked {{
-        background: {c.surface_alt}; color: {c.text}; border: 1px solid {c.border};
+    /* per-motor holding-torque toggle.  state = hold|free sets the fill (HOLD =
+       blue/engaged, FREE = amber/loose shaft); ack = ok|pending|bad sets the
+       border (pending = tap not yet confirmed by telemetry, bad = firmware
+       never acknowledged — see PumpRow._paint_hold). */
+    QPushButton#holdtoggle {{
+        font-weight: 800; letter-spacing: 1px;
+        border: 2px solid transparent; border-radius: 8px;
     }}
-    QPushButton#holdtoggle:!checked {{
-        background: {c.skip}; color: white; border: none;
-    }}
+    QPushButton#holdtoggle[state="hold"] {{ background: {c.accent}; color: {c.accent_text}; }}
+    QPushButton#holdtoggle[state="free"] {{ background: {c.skip}; color: white; }}
+    QPushButton#holdtoggle[ack="pending"] {{ border: 2px dashed {c.text}; }}
+    QPushButton#holdtoggle[ack="bad"] {{ border: 2px solid {c.bad}; }}
     QPushButton#holdtoggle:disabled {{
-        background: {c.disabled_bg}; color: {c.disabled_fg}; border-color: {c.border};
+        background: {c.disabled_bg}; color: {c.disabled_fg}; border: 2px solid transparent;
     }}
 
     QSpinBox {{

@@ -19,6 +19,7 @@ from . import protocol as P
 
 _DEBOUNCE_MS = 250
 _SETTLE_MS = 700
+_HOLD_CONFIRM_MS = 1800  # wait this long for telemetry to confirm a Hold/Free tap
 _DOT = "●"   # ●
 _PLAY = "▶"  # ▶
 
@@ -145,15 +146,24 @@ class PumpRow(QFrame):
 
         self._speed = SpeedControl()
 
-        self._hold = QPushButton("Hold")
+        self._hold = QPushButton("HOLD")
         self._hold.setObjectName("holdtoggle")
         self._hold.setCheckable(True)
         self._hold.setChecked(True)
-        self._hold.setFixedWidth(72)
-        self._hold.setMinimumHeight(40)
+        self._hold.setFixedWidth(96)
+        self._hold.setMinimumHeight(44)
         self._hold.setToolTip(
-            "Hold = holding torque on.  Free = torque off, hand-turn the syringe."
+            "HOLD = holding torque on.  FREE = torque off, hand-turn the syringe."
         )
+
+        # Hold/Free is optimistic: the tap flips the button immediately and we
+        # wait for telemetry to confirm. _want is the un-confirmed target (None
+        # once telemetry agrees); until then apply_state() must not fight it.
+        self._want: bool | None = None
+        self._confirm = QTimer(self)
+        self._confirm.setSingleShot(True)
+        self._confirm.setInterval(_HOLD_CONFIRM_MS)
+        self._confirm.timeout.connect(self._hold_unconfirmed)
 
         self._jog = QPushButton("Jog")
         self._jog.setCheckable(True)
@@ -176,10 +186,35 @@ class PumpRow(QFrame):
         )
         self._hold.toggled.connect(self._on_hold)
         self._jog.toggled.connect(self._on_jog)
+        self._paint_hold(ack="ok")  # seed the state/ack style properties
 
     def _on_hold(self, held: bool) -> None:
-        self._hold.setText("Hold" if held else "Free")
+        # user tap: show it now, wait for telemetry to confirm
+        self._want = held
+        self._confirm.start()
+        self._paint_hold(ack="pending")
         self.enableToggled.emit(self.idx, held)
+
+    def _hold_unconfirmed(self) -> None:
+        # telemetry never came back with our target — keep showing what the
+        # operator asked for, flag that the firmware hasn't acknowledged, retry
+        # the command once.
+        if self._want is None:
+            return
+        self._paint_hold(ack="bad")
+        self.enableToggled.emit(self.idx, self._want)
+
+    def _paint_hold(self, ack: str = "ok") -> None:
+        """Repaint the Hold/Free button: fill from the checked state, border
+        from `ack` ('ok' | 'pending' | 'bad'), plus a text cue."""
+        held = self._hold.isChecked()
+        word = "HOLD" if held else "FREE"
+        self._hold.setText(word + {"pending": " …", "bad": " ⚠"}.get(ack, ""))
+        self._hold.setProperty("state", "hold" if held else "free")
+        self._hold.setProperty("ack", ack)
+        s = self._hold.style()
+        s.unpolish(self._hold)
+        s.polish(self._hold)
 
     def set_name(self, name: str) -> None:
         self._name.setText(name)
@@ -199,11 +234,22 @@ class PumpRow(QFrame):
     # ---- driven by telemetry ----------------------------------------
     def apply_state(self, st: P.PumpState, protocol_running: bool) -> None:
         self._dot.setStyleSheet("color:#2ecc71;" if st.running else "color:#5b6472;")
-        if self._hold.isChecked() != st.enabled:
+
+        # --- Hold/Free ------------------------------------------------
+        if protocol_running:
+            self._confirm.stop()   # the sequence owns the drivers now
+            self._want = None
+        if self._want is not None:
+            if st.enabled == self._want:      # telemetry caught up — confirmed
+                self._confirm.stop()
+                self._want = None
+                self._paint_hold(ack="ok")
+            # else: still round-tripping — keep the operator's choice on screen
+        elif self._hold.isChecked() != st.enabled:
             self._hold.blockSignals(True)
             self._hold.setChecked(st.enabled)
-            self._hold.setText("Hold" if st.enabled else "Free")
             self._hold.blockSignals(False)
+            self._paint_hold(ack="ok")
 
         # while a sequence runs the row is a read-only mirror of telemetry
         self._speed.setReadOnly(protocol_running)
