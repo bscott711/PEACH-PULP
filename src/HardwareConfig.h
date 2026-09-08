@@ -14,7 +14,12 @@
 // ==========================================
 // TMC2209 — VACTUAL velocity mode, per-driver one-wire software UART
 // ==========================================
-#define SERIAL_BAUD_RATE 115200
+// 19200, not 115200: the TMC2209 auto-detects baud from the sync byte, and a
+// slower bit period (52 us vs 8.7 us) gives the bit-banged SoftwareSerial ~6x
+// more timing margin against FreeRTOS ISR/scheduler jitter — which is what makes
+// the half-duplex *read-back* (DRIVER_VERIFY) unreliable. Writes (VACTUAL) are
+// tiny and infrequent, so the lower rate costs nothing there.
+#define SERIAL_BAUD_RATE 19200
 
 // Driver current is set deterministically from the sense resistor (BTT
 // TMC2209 stepstick = 0.11 Ω). Tune RUN_CURRENT_MA for the real pump motors.
