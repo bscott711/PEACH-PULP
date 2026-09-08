@@ -24,6 +24,20 @@
 
 #define MOTOR_MAX_SAFE_STEPS 100000  // hard clamp in motorDriver::setVelocity
 
+// Every driver's full config (StealthChop / run current / microsteps / CoolStep)
+// is blindly re-pushed this often. A TMC2209 that momentarily loses VMOT — a
+// loose motor-power terminal — reloads its (loud, SpreadCycle) OTP defaults;
+// this heals it without the operator having to toggle Hold/Free in the GUI.
+#define DRIVER_REASSERT_MS 5000
+
+// Turn each one-wire link around to read GCONF/CHOPCONF back — at boot (log what
+// actually stuck: StealthChop, microsteps, run current) and on every reassert
+// tick (warn once if a driver goes dark mid-run, note once when it returns). So
+// a slot that never accepts its UART config is obvious in the log instead of
+// just audibly wrong. Diagnostics only: software-UART RX timing under FreeRTOS
+// is not guaranteed and this never gates motion. Set 0 to skip the read-back.
+#define DRIVER_VERIFY 1
+
 struct MotorConfig {
   uint32_t uartPin;  // TMC2209 PDN_UART — one-wire SoftwareSerial (write-only)
   uint32_t enPin;    // TMC2209 EN (active low), via setHardwareEnablePin

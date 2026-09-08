@@ -24,6 +24,12 @@ private:
   int lastSentSpeed; // send-on-change guard for the software UART
   bool isEnabled;
 
+  bool commOk;              // last UART read-back succeeded (diagnostic only)
+  uint8_t commFail;         // consecutive failed read-backs (debounces the warning)
+  uint32_t reassertAccumMs; // ms accumulated toward the next full-config re-push
+
+  void reassertDriver(); // blind full-config re-push + debounced health re-check
+
 public:
   explicit MotorNode(const MotorConfig &conf);
 

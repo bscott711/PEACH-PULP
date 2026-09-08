@@ -19,6 +19,7 @@ struct MotorCommand {
 struct MotorTelemetry {
   int targetSpeed;
   bool isEnabled;
+  bool commOk; // last UART read-back succeeded (false = driver running blind)
 };
 
 // ============================================================================
