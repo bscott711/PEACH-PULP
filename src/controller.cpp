@@ -271,13 +271,16 @@ void controller_task(void *pvParameters) {
     if (stop) xEventGroupClearBits(controlEvents, BIT_STOP_REQUEST);
     if (skip) xEventGroupClearBits(controlEvents, BIT_SKIP_REQUEST);
 
-    // 2. apply to pumps (controller_task is the sole speed writer)
+    // 2. apply to pumps (controller_task is the sole speed writer), and fold
+    //    each driver's UART health back into the snapshot for telemetry
     for (int i = 0; i < NUM_PUMPS; i++) {
       g_pumps[i]->setSpeed(targetSteps[i]);
       if (snap.pumpEnabled[i] != lastAppliedEnabled[i]) {
         g_pumps[i]->setEnabled(snap.pumpEnabled[i]);
         lastAppliedEnabled[i] = snap.pumpEnabled[i];
       }
+      MotorTelemetry mt;
+      snap.pumpCommOk[i] = g_pumps[i]->peekTelemetry(mt) ? mt.commOk : true;
     }
 
     // 3. debounced flash persistence — idle only, never mid-run

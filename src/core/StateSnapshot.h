@@ -14,4 +14,5 @@ struct StateSnapshot {
   int pumpSpeedSteps[NUM_PUMPS];
   bool pumpRunning[NUM_PUMPS]; // commanded non-zero this cycle
   bool pumpEnabled[NUM_PUMPS];
+  bool pumpCommOk[NUM_PUMPS];  // false = driver not answering on UART, running blind
 };

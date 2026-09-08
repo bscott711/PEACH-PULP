@@ -99,15 +99,16 @@ static void parseLine(char *line) {
 }
 
 static void emitTelemetry(const StateSnapshot &s) {
-  char j[420];
+  char j[512];
   int n = snprintf(j, sizeof(j),
                    "{\"phase\":%d,\"nphases\":%u,\"remaining\":%lu,\"pumps\":[",
                    s.currentPhase, (unsigned)s.nPhases,
                    (unsigned long)s.phaseRemainingS);
   for (int i = 0; i < NUM_PUMPS && n < (int)sizeof(j); i++) {
-    n += snprintf(j + n, sizeof(j) - n, "%s{\"sp\":%d,\"run\":%d,\"en\":%d}",
-                  i ? "," : "", s.pumpSpeedSteps[i], s.pumpRunning[i] ? 1 : 0,
-                  s.pumpEnabled[i] ? 1 : 0);
+    n += snprintf(j + n, sizeof(j) - n,
+                  "%s{\"sp\":%d,\"run\":%d,\"en\":%d,\"ok\":%d}", i ? "," : "",
+                  s.pumpSpeedSteps[i], s.pumpRunning[i] ? 1 : 0,
+                  s.pumpEnabled[i] ? 1 : 0, s.pumpCommOk[i] ? 1 : 0);
   }
   if (n < (int)sizeof(j)) snprintf(j + n, sizeof(j) - n, "]}");
   serialEmit(j);
