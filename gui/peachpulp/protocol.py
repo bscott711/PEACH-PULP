@@ -44,6 +44,12 @@ PHASE_SECONDS_MIN = 1
 PHASE_SECONDS_MAX = 3600
 MAX_PHASES = 32  # firmware staging-buffer cap
 
+# TMC2209 microstepping, one setting for all 8 drivers (MICROSTEP <n>). Speed
+# numbers keep their meaning at any setting: they stay "steps/s at 1/16" and the
+# firmware scales VACTUAL by n/16, so the limits above do not move.
+MICROSTEP_CHOICES = (1, 2, 4, 8, 16, 32, 64, 128, 256)
+DEFAULT_MICROSTEPS = 16
+
 
 def clamp_speed(steps) -> int:
     return max(-SPEED_MAX, min(SPEED_MAX, int(steps)))
@@ -95,6 +101,23 @@ def cmd_enable(idx: int, on: bool) -> str:
 
 def cmd_jog(idx: int, steps: int) -> str:
     return "JOG {} {}".format(int(idx), clamp_speed(steps))
+
+
+def valid_microsteps(n) -> bool:
+    """True for a real int in MICROSTEP_CHOICES (bool / float / str are not)."""
+    return isinstance(n, int) and not isinstance(n, bool) and n in MICROSTEP_CHOICES
+
+
+def cmd_microstep(n: int) -> str:
+    """Set the microstepping of all drivers. Unlike the speed builders this does
+    not clamp: a wrong value is a bug in the caller, so it raises."""
+    if not valid_microsteps(n):
+        raise ValueError(
+            "microsteps must be one of {}, got {!r}".format(
+                "|".join(str(c) for c in MICROSTEP_CHOICES), n
+            )
+        )
+    return "MICROSTEP {}".format(n)
 
 
 # ---- automated-program upload (Pi -> Octopus) ------------------------------
@@ -158,6 +181,9 @@ class Telemetry:
     pumps: List[PumpState] = field(
         default_factory=lambda: [PumpState() for _ in range(NUM_PUMPS)]
     )
+    # current microstepping from the top-level "ms"; None = firmware too old to
+    # report it (or sent something that isn't a valid choice)
+    microsteps: Optional[int] = None
 
     @property
     def running(self) -> bool:
@@ -200,6 +226,9 @@ def parse_line(line: str) -> ParsedLine:
             remaining_s=int(d.get("remaining", 0)),
             nphases=int(d.get("nphases", 0)),
         )
+        ms = d.get("ms")
+        if valid_microsteps(ms):
+            t.microsteps = ms
         for i, p in enumerate(d.get("pumps", [])[:NUM_PUMPS]):
             t.pumps[i] = PumpState(
                 speed=int(p.get("sp", 0)),

@@ -94,6 +94,7 @@ Line-based ASCII over USB CDC, `\n`-terminated.
 | `SPEED <idx> <steps>` | live/manual speed for a pump (used by `JOG`; not the phase speed) |
 | `JOG <idx> <steps>` | run pump `idx` at `steps` while idle; `0` stops it |
 | `ENABLE <idx> <0\|1>` | holding torque on/off for a pump |
+| `MICROSTEP <n>` | microstepping for **all** drivers, `n` ∈ {1, 2, 4, 8, 16, 32, 64, 128, 256}; idle only |
 | `PROGCLEAR` | begin staging a new program |
 | `PROGADD <sec> <s0> <s1> … <s7>` | append one phase: duration + 8 motor speeds |
 | `PROGCOMMIT` | swap the staged program in atomically (rejects an empty program) |
@@ -103,9 +104,26 @@ Line-based ASCII over USB CDC, `\n`-terminated.
 `MAX_PHASES = 32`. The GUI re-uploads the full `PROGCLEAR … PROGCOMMIT` block (debounced)
 on every edit and once on connect.
 
+**Microstepping** (`MICROSTEP <n>`, verb case-insensitive like the others). Default 16
+(today's behaviour); the firmware persists the setting in flash and loads it at boot (nothing
+stored, or an invalid value → 16). Errors, validated in this order:
+
+- `!ERR MICROSTEP 1|2|4|8|16|32|64|128|256` — `n` missing, non-integer or not a choice;
+- `!ERR MICROSTEP busy` — a program is running or any pump is moving (manual run / `JOG`).
+
+Success is silent, like every other verb: the new value shows up as `"ms"` in telemetry. The
+GUI treats that as the confirmation, and a *missing* `ms` as "firmware too old" (selector
+disabled). **Speed semantics:** a speed number keeps its physical meaning at every setting —
+speed units are "steps/s at 1/16 microstep" — so the firmware sends
+`VACTUAL = round(speed × ms / 16)` (non-zero speeds never below ±1, clamped to
+`MOTOR_MAX_SAFE_STEPS`). At 16 that is byte-identical to before, and the GUI speed limits
+(`SPEED_MAX` 5000) do not change. Microstepping is firmware state only: it is not part of a
+workspace or of the phase-program format.
+
 **Octopus → Pi:** JSON telemetry ~5 Hz —
-`{"phase":1,"nphases":5,"remaining":42,"pumps":[{"sp":..,"run":..,"en":..,"ok":..}]}`
-(`ok` 0 = that driver isn't answering on UART / running blind on defaults);
+`{"phase":1,"nphases":5,"remaining":42,"ms":16,"pumps":[{"sp":..,"run":..,"en":..,"ok":..}]}`
+(`ok` 0 = that driver isn't answering on UART / running blind on defaults; `ms` = current
+microstepping, absent on firmware that predates `MICROSTEP`);
 events `!EVENT phase 2` / `!EVENT done` / `!EVENT prog <n>` / `!ERR <msg>`; logs `# ...`.
 
 Implemented in `src/core/SerialLink.*`, which replaces `src/core/NetworkManager.*`. Parsed
@@ -133,7 +151,7 @@ yet run on hardware. The firmware changes:
 
 - `src/tasks/ActiveMotionNode.h` — the Active-Object template (already vanilla FreeRTOS)
 - The protocol FSM shape, SKIP event-group model, 2 s debounced persistence
-- `MotorDriver` VACTUAL config: microsteps 16, StealthChop on, CoolStep off, run/hold current
+- `MotorDriver` VACTUAL config: microsteps 16 (default; now selectable with `MICROSTEP`), StealthChop on, CoolStep off, run/hold current
   (currents re-tuned for the real pump motors)
 - `MotorNode::hwUpdate` send-on-change (now limits SW-serial writes instead of shared-bus traffic)
 

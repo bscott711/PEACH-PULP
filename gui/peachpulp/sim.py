@@ -30,8 +30,15 @@ def _seed_program() -> List[Phase]:
     return prog
 
 
+_MICROSTEP_USAGE = "!ERR MICROSTEP " + "|".join(str(n) for n in P.MICROSTEP_CHOICES)
+
+
 class FakeFirmware:
-    def __init__(self) -> None:
+    def __init__(self, legacy_firmware: bool = False) -> None:
+        # legacy_firmware: emulate firmware that predates MICROSTEP — no "ms" in
+        # telemetry and the verb is unknown (for exercising the "too old" UI)
+        self.legacy_firmware = legacy_firmware
+        self.microsteps: int = P.DEFAULT_MICROSTEPS
         self.live_speeds: List[int] = [0] * P.NUM_PUMPS
         self.enabled: List[bool] = [True] * P.NUM_PUMPS
         self.manual: List[bool] = [False] * P.NUM_PUMPS
@@ -83,6 +90,16 @@ class FakeFirmware:
                 self.manual[i] = v != 0
                 if v:
                     self.live_speeds[i] = v
+        elif c == "MICROSTEP" and not self.legacy_firmware:
+            # validate n first, then busy. Success is silent, like every other
+            # verb: the new value just shows up in telemetry ("ms").
+            n = _int(args[0]) if args else 0
+            if n not in P.MICROSTEP_CHOICES:
+                self._out.append(_MICROSTEP_USAGE)
+            elif self._moving():
+                self._out.append("!ERR MICROSTEP busy")
+            else:
+                self.microsteps = n
         elif c == "PROGCLEAR":
             self._staging = []
         elif c == "PROGADD":
@@ -106,6 +123,12 @@ class FakeFirmware:
             pass  # telemetry is emitted continuously
         else:
             self._out.append("!ERR sim: bad `{}`".format(line.strip()))
+
+    def _moving(self) -> bool:
+        """A program is running, or any pump is turning (manual run / JOG)."""
+        return self.phase >= 0 or any(
+            m and sp != 0 for m, sp in zip(self.manual, self.live_speeds)
+        )
 
     # ---- periodic advance (call ~20 Hz) --------------------------------
     def tick(self) -> None:
@@ -141,14 +164,15 @@ class FakeFirmware:
             pumps.append(
                 {"sp": sp, "run": int(run), "en": int(self.enabled[i]), "ok": 1}
             )
-        return json.dumps(
-            {
-                "phase": self.phase,
-                "nphases": len(self.program),
-                "remaining": remaining,
-                "pumps": pumps,
-            }
-        )
+        d = {
+            "phase": self.phase,
+            "nphases": len(self.program),
+            "remaining": remaining,
+            "pumps": pumps,
+        }
+        if not self.legacy_firmware:
+            d["ms"] = self.microsteps
+        return json.dumps(d)
 
     # ---- pending async lines (PONG / !EVENT / !ERR) -------------------
     def drain(self) -> List[str]:

@@ -1,4 +1,6 @@
 """Protocol builders + parser. No Qt / serial deps — plain pytest."""
+import pytest
+
 from peachpulp import protocol as P
 
 
@@ -104,3 +106,46 @@ def test_telemetry_nphases_and_label():
     assert kind == "telemetry"
     assert t.nphases == 5
     assert t.phase_label == "Phase 3 / 5"
+
+
+def test_microstep_choices_and_default():
+    assert P.MICROSTEP_CHOICES == (1, 2, 4, 8, 16, 32, 64, 128, 256)
+    assert P.DEFAULT_MICROSTEPS == 16 and P.DEFAULT_MICROSTEPS in P.MICROSTEP_CHOICES
+
+
+def test_cmd_microstep_valid():
+    assert P.cmd_microstep(16) == "MICROSTEP 16"
+    assert P.cmd_microstep(1) == "MICROSTEP 1"
+    for n in P.MICROSTEP_CHOICES:
+        assert P.cmd_microstep(n) == "MICROSTEP {}".format(n)
+
+
+@pytest.mark.parametrize(
+    "bad", [0, -16, 3, 12, 15, 17, 512, True, False, 16.0, "16", None, [16]]
+)
+def test_cmd_microstep_rejects_anything_else(bad):
+    with pytest.raises(ValueError):
+        P.cmd_microstep(bad)
+
+
+def _telem_line(extra=""):
+    return '{"phase":-1,"nphases":4,"remaining":0%s,"pumps":[]}' % extra
+
+
+def test_telemetry_microsteps_present():
+    for n in P.MICROSTEP_CHOICES:
+        _, t = P.parse_line(_telem_line(',"ms":%d' % n))
+        assert t.microsteps == n
+
+
+def test_telemetry_microsteps_absent_is_none():
+    # firmware predating MICROSTEP never sends "ms"
+    kind, t = P.parse_line(_telem_line())
+    assert kind == "telemetry" and t.microsteps is None
+    assert P.Telemetry().microsteps is None
+
+
+@pytest.mark.parametrize("raw", ["0", "3", "-16", "512", "16.0", '"16"', "true", "null"])
+def test_telemetry_microsteps_invalid_is_none(raw):
+    kind, t = P.parse_line(_telem_line(',"ms":' + raw))
+    assert kind == "telemetry" and t.microsteps is None

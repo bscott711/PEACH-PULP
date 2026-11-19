@@ -20,6 +20,7 @@ FIRMWARE_VERBS = {
     "SPEED", "PHASETIME", "ENABLE", "JOG",
     "PROGCLEAR", "PROGADD", "PROGCOMMIT",
     "DFU",  # reboot into the ROM bootloader (src/core/DfuReboot.*)
+    "MICROSTEP",  # MICROSTEP <1|2|4|8|16|32|64|128|256>, all drivers, idle only
 }
 
 
@@ -32,7 +33,7 @@ def test_every_gui_command_is_a_firmware_verb():
         P.cmd_ping(), P.cmd_run(), P.cmd_stop(), P.cmd_skip(), P.cmd_state(),
         P.cmd_speed(0, 100), P.cmd_phasetime(0, 30), P.cmd_enable(0, True),
         P.cmd_jog(0, 100), P.cmd_prog_clear(), P.cmd_prog_commit(),
-        P.cmd_prog_add(30, {0: 100}), P.cmd_dfu(),
+        P.cmd_prog_add(30, {0: 100}), P.cmd_dfu(), P.cmd_microstep(16),
     ]
     for ln in lines:
         assert _verb(ln) in FIRMWARE_VERBS, ln
@@ -69,16 +70,18 @@ def test_cmd_program_upload_sequence():
 
 
 # --- firmware telemetry (SerialLink.cpp emitTelemetry) -----------------------
-def _fw_telemetry(phase, nphases, remaining, pumps):
+def _fw_telemetry(phase, nphases, remaining, pumps, ms=16):
     # each pump: (sp, run, en) or (sp, run, en, ok)  — "ok" defaults to 1
+    # ms: top-level microsteps (emitTelemetry adds "ms"); None = old firmware, omitted
     body = ",".join(
         '{"sp":%d,"run":%d,"en":%d,"ok":%d}'
         % (p[0], p[1], p[2], p[3] if len(p) > 3 else 1)
         for p in pumps
     )
+    ms_field = "" if ms is None else ',"ms":%d' % ms
     return (
-        '{"phase":%d,"nphases":%d,"remaining":%d,"pumps":[%s]}'
-        % (phase, nphases, remaining, body)
+        '{"phase":%d,"nphases":%d,"remaining":%d%s,"pumps":[%s]}'
+        % (phase, nphases, remaining, ms_field, body)
     )
 
 
@@ -126,3 +129,32 @@ def test_gui_parses_firmware_events():
         assert P.parse_line(er)[0] == "error"
     assert P.parse_line("PONG") == ("pong", None)
     assert P.parse_line("# STORE: flash blob initialised (v3)")[0] == "log"
+
+
+def test_microstep_wire_line_matches_firmware_grammar():
+    # MICROSTEP <n>, n in {1,2,4,8,16,32,64,128,256}; verb case-insensitive on the
+    # firmware side, the GUI always sends it upper-case.
+    for n in (1, 2, 4, 8, 16, 32, 64, 128, 256):
+        assert P.cmd_microstep(n) == "MICROSTEP %d" % n
+    assert P.MICROSTEP_CHOICES == (1, 2, 4, 8, 16, 32, 64, 128, 256)
+
+
+def test_gui_parses_firmware_microsteps():
+    # emitTelemetry() adds a top-level "ms"
+    raw = _fw_telemetry(-1, 4, 0, [(0, 0, 1)] * 8, ms=64)
+    json.loads(raw)
+    _, t = P.parse_line(raw)
+    assert t.microsteps == 64
+
+
+def test_missing_ms_key_means_firmware_too_old():
+    _, t = P.parse_line(_fw_telemetry(-1, 4, 0, [(0, 0, 1)] * 8, ms=None))
+    assert t.microsteps is None
+
+
+def test_gui_parses_microstep_errors():
+    # !ERR MICROSTEP 1|2|4|8|16|32|64|128|256   (bad / missing / non-integer n)
+    # !ERR MICROSTEP busy                        (program or any pump running)
+    for er in ("!ERR MICROSTEP 1|2|4|8|16|32|64|128|256", "!ERR MICROSTEP busy"):
+        kind, msg = P.parse_line(er)
+        assert kind == "error" and msg.startswith("MICROSTEP")

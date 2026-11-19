@@ -144,3 +144,93 @@ def test_empty_program_commit_is_rejected():
     assert any("!ERR" in l for l in fw.drain())
     # seed program still intact
     assert _telem(fw).nphases == P.NUM_PHASES
+
+
+# --- MICROSTEP -------------------------------------------------------------
+_USAGE = "!ERR MICROSTEP 1|2|4|8|16|32|64|128|256"
+
+
+def test_microstep_default_is_16_and_in_telemetry():
+    fw = FakeFirmware()
+    assert _telem(fw).microsteps == 16
+
+
+def test_microstep_ok_is_silent_and_shows_in_telemetry():
+    fw = FakeFirmware()
+    for n in P.MICROSTEP_CHOICES:
+        fw.feed(P.cmd_microstep(n))
+        assert fw.drain() == []          # success: no reply, like every other verb
+        assert _telem(fw).microsteps == n
+
+
+def test_microstep_is_case_insensitive():
+    fw = FakeFirmware()
+    fw.feed("microstep 32")
+    assert fw.drain() == [] and _telem(fw).microsteps == 32
+    fw.feed("MicroStep 4")
+    assert fw.drain() == [] and _telem(fw).microsteps == 4
+
+
+def test_microstep_bad_n_is_rejected_and_keeps_the_old_value():
+    fw = FakeFirmware()
+    fw.feed("MICROSTEP 32")
+    for line in ("MICROSTEP 3", "MICROSTEP 0", "MICROSTEP -16", "MICROSTEP 512",
+                 "MICROSTEP", "MICROSTEP abc", "MICROSTEP 16.5"):
+        fw.drain()
+        fw.feed(line)
+        assert fw.drain() == [_USAGE], line
+        assert _telem(fw).microsteps == 32, line
+
+
+def test_microstep_busy_while_a_program_runs():
+    fw = FakeFirmware()
+    fw.feed(P.cmd_phasetime(0, 3600))
+    fw.feed("RUN")
+    fw.drain()
+    fw.feed("MICROSTEP 32")
+    assert fw.drain() == ["!ERR MICROSTEP busy"]
+    assert _telem(fw).microsteps == 16
+    fw.feed("STOP")
+    fw.feed("MICROSTEP 32")
+    assert fw.drain() == [] and _telem(fw).microsteps == 32
+
+
+def test_microstep_busy_while_a_pump_runs():
+    fw = FakeFirmware()
+    fw.feed("JOG 4 800")
+    fw.drain()
+    fw.feed("MICROSTEP 8")
+    assert fw.drain() == ["!ERR MICROSTEP busy"]
+    assert _telem(fw).microsteps == 16
+    fw.feed("JOG 4 0")                    # pump stopped -> allowed again
+    fw.feed("MICROSTEP 8")
+    assert fw.drain() == [] and _telem(fw).microsteps == 8
+
+
+def test_microstep_validates_n_before_busy():
+    fw = FakeFirmware()
+    fw.feed("JOG 0 500")
+    fw.drain()
+    fw.feed("MICROSTEP 3")
+    assert fw.drain() == [_USAGE]         # bad n wins over busy
+
+
+def test_microstep_does_not_change_reported_speeds():
+    fw = FakeFirmware()
+    fw.feed("SPEED 0 1000")
+    fw.feed("JOG 0 1000")
+    before = _telem(fw).pumps[0]
+    fw.feed("STOP")
+    fw.feed("MICROSTEP 256")
+    fw.feed("JOG 0 1000")
+    assert _telem(fw).pumps[0].speed == before.speed == 1000   # speed numbers keep meaning
+
+
+def test_legacy_firmware_has_no_ms_and_unknown_verb():
+    fw = FakeFirmware(legacy_firmware=True)
+    assert _telem(fw).microsteps is None
+    assert '"ms"' not in fw.telemetry_line()
+    fw.feed("MICROSTEP 32")
+    errs = fw.drain()
+    assert len(errs) == 1 and errs[0].startswith("!ERR") and "MICROSTEP busy" not in errs[0]
+    assert _telem(fw).microsteps is None
