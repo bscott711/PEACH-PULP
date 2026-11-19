@@ -308,6 +308,83 @@ def test_microstep_disabled_with_tooltip_when_firmware_too_old(sel):
     assert sel.combo.isEnabled() and "too old" not in sel.combo.toolTip()
 
 
+def _why(w):
+    """(text, shown) of the visible 'why is this greyed out' caption."""
+    return w._why.text(), not w._why.isHidden()
+
+
+def test_microstep_caption_while_waiting_for_first_telemetry(app):
+    w = MicrostepSelector()
+    assert _why(w) == ("waiting for Octopus…", True)
+    assert w.combo.toolTip()                      # tooltip kept
+
+
+def test_microstep_caption_when_firmware_too_old(sel):
+    sel.apply_telemetry(_telem(None))
+    assert _why(sel) == ("firmware too old — reflash", True)
+    assert sel.combo.toolTip() == "Firmware too old: reflash to enable"
+
+
+def test_microstep_caption_while_a_program_or_pump_runs(sel):
+    sel.apply_telemetry(_telem(16, phase=1))
+    assert _why(sel) == ("stop pumps first", True)
+    sel.apply_telemetry(_telem(16))
+    assert _why(sel)[1] is False
+    sel.apply_telemetry(_telem(16, running=[3]))
+    assert _why(sel) == ("stop pumps first", True)
+    assert "Stop all pumps" in sel.combo.toolTip()
+
+
+def test_microstep_caption_hidden_when_enabled(sel):
+    assert sel.combo.isEnabled()
+    assert _why(sel) == ("", False)
+    sel.apply_telemetry(_telem(None))             # shown again when it greys out
+    assert _why(sel)[1] is True
+    sel.apply_telemetry(_telem(16))               # reflashed
+    assert _why(sel) == ("", False)
+
+
+def test_microstep_caption_is_short_and_unwrapped(sel):
+    assert not sel._why.wordWrap()
+    for t, text in ((_telem(None), "firmware too old — reflash"),
+                    (_telem(16, phase=1), "stop pumps first")):
+        sel.apply_telemetry(t)
+        assert len(sel._why.text()) <= 28 and sel._why.text() == text
+
+
+_NO_MS_MSG = (
+    "firmware has no MICROSTEP support — "
+    "flash breaking/octopus-stm32-fw (fw effb898 or newer)"
+)
+
+
+def test_microstep_old_firmware_message_emitted_once(sel):
+    assert sel.msgs == []                         # current firmware: silent
+    for _ in range(6):                            # ~5 Hz telemetry without ms
+        sel.apply_telemetry(_telem(None))
+    assert sel.msgs == [_NO_MS_MSG]
+
+
+def test_microstep_old_firmware_message_again_only_after_ms_was_seen(sel):
+    for _ in range(3):
+        sel.apply_telemetry(_telem(None))
+    assert sel.msgs == [_NO_MS_MSG]
+    sel.apply_telemetry(_telem(16))               # ms seen (e.g. reflashed)
+    assert sel.msgs == [_NO_MS_MSG]
+    for _ in range(3):                            # ...and gone again
+        sel.apply_telemetry(_telem(None))
+    assert sel.msgs == [_NO_MS_MSG, _NO_MS_MSG]
+
+
+def test_microstep_old_firmware_message_on_first_telemetry(app):
+    w = MicrostepSelector()                       # never saw ms at all
+    msgs = []
+    w.message.connect(msgs.append)
+    w.apply_telemetry(_telem(None))
+    w.apply_telemetry(_telem(None))
+    assert msgs == [_NO_MS_MSG]
+
+
 def test_microstep_not_stored_in_workspaces():
     from peachpulp.workspace import default_workspace
     assert "micro" not in " ".join(default_workspace().to_dict()).lower()

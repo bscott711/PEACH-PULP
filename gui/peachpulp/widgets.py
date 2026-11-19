@@ -399,7 +399,8 @@ class MicrostepSelector(QWidget):
     value (red border) and ``message`` says why.
 
     Disabled while a program or any pump runs (the firmware rejects it) and on
-    firmware that doesn't report ``ms`` yet.
+    firmware that doesn't report ``ms`` yet. A short caption beside the combo says
+    which (a touchscreen never shows tooltips); it is hidden while enabled.
     """
 
     microstepRequested = Signal(int)   # microsteps, one of P.MICROSTEP_CHOICES
@@ -408,6 +409,10 @@ class MicrostepSelector(QWidget):
     _HINT = (
         "Microstepping for all pumps. Speed numbers keep their meaning "
         "(steps/s at 1/16)."
+    )
+    _NO_MS_MSG = (
+        "firmware has no MICROSTEP support — "
+        "flash breaking/octopus-stm32-fw (fw effb898 or newer)"
     )
 
     def __init__(self, confirm_ms: int = _MICROSTEP_CONFIRM_MS, parent=None) -> None:
@@ -433,10 +438,19 @@ class MicrostepSelector(QWidget):
         lay.addWidget(self._label)
         lay.addWidget(self.combo)
 
+        # Why the combo is greyed out, as visible text (muted; short, no wrapping).
+        self._why = QLabel()
+        self._why.setObjectName("microstepWhy")
+        self._why.setStyleSheet("color: palette(placeholder-text); font-size: 12px;")
+        self._why.setWordWrap(False)
+        self._why.setVisible(False)
+        lay.addWidget(self._why)
+
         # _current = last value telemetry reported (None until/unless it does);
         # _want = the un-confirmed pick (None once telemetry agrees).
         self._current: int | None = None
         self._want: int | None = None
+        self._warned_no_ms = False   # one log line per stretch of ms-less telemetry
         self._confirm = QTimer(self)
         self._confirm.setSingleShot(True)
         self._confirm.setInterval(confirm_ms)
@@ -444,7 +458,7 @@ class MicrostepSelector(QWidget):
 
         self.combo.currentIndexChanged.connect(self._on_pick)
         self._paint("ok")
-        self._set_enabled(False, "Waiting for the Octopus…")
+        self._set_enabled(False, "Waiting for the Octopus…", "waiting for Octopus…")
 
     # ---- user pick -----------------------------------------------------
     def _on_pick(self, index: int) -> None:
@@ -490,8 +504,14 @@ class MicrostepSelector(QWidget):
             self._confirm.stop()
             self._want = None
             self._paint("ok")
-            self._set_enabled(False, "Firmware too old: reflash to enable")
+            self._set_enabled(
+                False, "Firmware too old: reflash to enable", "firmware too old — reflash"
+            )
+            if not self._warned_no_ms:           # telemetry arrives at ~5 Hz: say it once
+                self._warned_no_ms = True
+                self.message.emit(self._NO_MS_MSG)
             return
+        self._warned_no_ms = False
         self._current = ms
         if self._want is not None:
             if ms == self._want:                 # telemetry caught up — confirmed
@@ -506,7 +526,7 @@ class MicrostepSelector(QWidget):
 
         busy = t.running or any(p.running for p in t.pumps)
         if busy:
-            self._set_enabled(False, "Stop all pumps first")
+            self._set_enabled(False, "Stop all pumps first", "stop pumps first")
         else:
             self._set_enabled(True, self._HINT)
 
@@ -518,10 +538,13 @@ class MicrostepSelector(QWidget):
             self.combo.setCurrentIndex(i)
             self.combo.blockSignals(False)
 
-    def _set_enabled(self, on: bool, tip: str) -> None:
+    def _set_enabled(self, on: bool, tip: str, why: str = "") -> None:
         self.combo.setEnabled(on)
         self.combo.setToolTip(tip)
         self._label.setToolTip(tip)
+        self._why.setText("" if on else why)
+        self._why.setToolTip(tip)
+        self._why.setVisible(not on)
 
     def _paint(self, ack: str) -> None:
         """ack = 'ok' | 'pending' | 'bad' → border (see theme.py) + a text cue."""
