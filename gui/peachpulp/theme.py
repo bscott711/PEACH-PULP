@@ -119,6 +119,17 @@ def _qss(c: _Colors) -> str:
         selection-background-color: {c.accent}; selection-color: {c.accent_text};
     }}
 
+    /* Live-tab microstepping picker: touch-sized popup rows; ack = ok|pending|bad
+       sets the border (pending = pick not yet echoed by telemetry, bad = reverted
+       — see MicrostepSelector). */
+    QComboBox#microstep {{
+        font-weight: 700; padding: 6px 12px; min-height: 28px;
+        border: 2px solid {c.border};   /* 2px always, so ack never shifts the layout */
+    }}
+    QComboBox#microstep QAbstractItemView::item {{ min-height: 44px; padding: 0 10px; }}
+    QComboBox#microstep[ack="pending"] {{ border: 2px dashed {c.text}; }}
+    QComboBox#microstep[ack="bad"] {{ border: 2px solid {c.bad}; }}
+
     QLineEdit {{
         background: {c.surface_alt}; border: 1px solid {c.border};
         border-radius: 8px; padding: 6px 10px; min-height: 24px;

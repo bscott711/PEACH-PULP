@@ -1,12 +1,14 @@
-"""Shared touch widgets: speed control, pump row, run-status bar."""
+"""Shared touch widgets: speed control, pump row, microstep selector, run-status bar."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListView,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -23,6 +25,8 @@ from . import protocol as P
 _DEBOUNCE_MS = 250
 _SETTLE_MS = 700
 _HOLD_CONFIRM_MS = 1800  # wait this long for telemetry to confirm a Hold/Free tap
+_MICROSTEP_CONFIRM_MS = 1800  # ...and for telemetry "ms" to confirm a microstep pick
+_TOUCH_H = 44  # minimum touch-target height (combo box and its popup rows)
 _DOT = "●"   # ●
 _PLAY = "▶"  # ▶
 
@@ -376,6 +380,158 @@ class PumpRow(QFrame):
                 self._jog.blockSignals(False)
         elif not self._speed.busy() and self._speed.value() != st.speed:
             self._speed.setValue(st.speed)
+
+
+def microstep_label(n: int) -> str:
+    return "Full" if n == 1 else "1/{}".format(n)
+
+
+class MicrostepSelector(QWidget):
+    """Live-tab "Microstepping" picker. One setting for all drivers (``MICROSTEP <n>``).
+
+    Speed numbers keep their meaning at every setting (steps/s at 1/16), so this
+    changes smoothness/torque, not how fast a given number runs.
+
+    The firmware is the source of truth and the combo follows telemetry ``ms``.
+    A pick is optimistic, like Hold/Free: it shows at once (dashed border) until
+    telemetry echoes it. If that doesn't happen within ``confirm_ms``, or the
+    firmware answers ``!ERR MICROSTEP …``, the combo reverts to the telemetry
+    value (red border) and ``message`` says why.
+
+    Disabled while a program or any pump runs (the firmware rejects it) and on
+    firmware that doesn't report ``ms`` yet.
+    """
+
+    microstepRequested = Signal(int)   # microsteps, one of P.MICROSTEP_CHOICES
+    message = Signal(str)              # a failure the operator should see (-> log)
+
+    _HINT = (
+        "Microstepping for all pumps. Speed numbers keep their meaning "
+        "(steps/s at 1/16)."
+    )
+
+    def __init__(self, confirm_ms: int = _MICROSTEP_CONFIRM_MS, parent=None) -> None:
+        super().__init__(parent)
+        self._label = QLabel("Microstepping")
+        self._label.setObjectName("sectionHeader")
+
+        self.combo = QComboBox()
+        self.combo.setObjectName("microstep")
+        self.combo.setView(QListView())          # lets QSS size the popup rows
+        self.combo.setMinimumHeight(_TOUCH_H)
+        self.combo.setMinimumWidth(120)
+        for n in P.MICROSTEP_CHOICES:
+            self.combo.addItem(microstep_label(n), n)
+            self.combo.setItemData(
+                self.combo.count() - 1, QSize(0, _TOUCH_H), Qt.SizeHintRole
+            )
+        self.combo.setCurrentIndex(self.combo.findData(P.DEFAULT_MICROSTEPS))
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        lay.addWidget(self._label)
+        lay.addWidget(self.combo)
+
+        # _current = last value telemetry reported (None until/unless it does);
+        # _want = the un-confirmed pick (None once telemetry agrees).
+        self._current: int | None = None
+        self._want: int | None = None
+        self._confirm = QTimer(self)
+        self._confirm.setSingleShot(True)
+        self._confirm.setInterval(confirm_ms)
+        self._confirm.timeout.connect(self._unconfirmed)
+
+        self.combo.currentIndexChanged.connect(self._on_pick)
+        self._paint("ok")
+        self._set_enabled(False, "Waiting for the Octopus…")
+
+    # ---- user pick -----------------------------------------------------
+    def _on_pick(self, index: int) -> None:
+        n = self.combo.itemData(index)
+        if n is None:
+            return
+        self._want = n
+        self._confirm.start()
+        self._paint("pending")
+        self.microstepRequested.emit(n)
+
+    def _unconfirmed(self) -> None:
+        # telemetry never echoed the pick (timer fired): revert and say so
+        if self._want is None:
+            return
+        self._fail(
+            "microstepping {} not confirmed by the Octopus".format(
+                microstep_label(self._want)
+            )
+        )
+
+    def on_error(self, text: str) -> None:
+        """The firmware answered ``!ERR MICROSTEP …`` (payload as parse_line gives it)."""
+        if self._want is None:
+            return  # nothing of ours in flight
+        why = "pumps are running" if text.rstrip().endswith("busy") else text
+        self._fail("microstepping change rejected ({})".format(why))
+
+    def _fail(self, what: str) -> None:
+        self._confirm.stop()
+        self._want = None
+        self._show(self._current if self._current is not None else P.DEFAULT_MICROSTEPS)
+        self._paint("bad")
+        self.message.emit("{} — staying at {}".format(
+            what, microstep_label(self.combo.currentData())
+        ))
+
+    # ---- driven by telemetry --------------------------------------------
+    def apply_telemetry(self, t: P.Telemetry) -> None:
+        ms = t.microsteps
+        if ms is None:  # firmware predates MICROSTEP: nothing to follow or send to
+            self._current = None
+            self._confirm.stop()
+            self._want = None
+            self._paint("ok")
+            self._set_enabled(False, "Firmware too old: reflash to enable")
+            return
+        self._current = ms
+        if self._want is not None:
+            if ms == self._want:                 # telemetry caught up — confirmed
+                self._confirm.stop()
+                self._want = None
+                self._show(ms)
+                self._paint("ok")
+            # else: still round-tripping — keep the operator's pick on screen
+        elif self.combo.currentData() != ms:     # follow the firmware
+            self._show(ms)
+            self._paint("ok")
+
+        busy = t.running or any(p.running for p in t.pumps)
+        if busy:
+            self._set_enabled(False, "Stop all pumps first")
+        else:
+            self._set_enabled(True, self._HINT)
+
+    # ---- helpers ---------------------------------------------------------
+    def _show(self, n: int) -> None:
+        i = self.combo.findData(n)
+        if i >= 0 and i != self.combo.currentIndex():
+            self.combo.blockSignals(True)
+            self.combo.setCurrentIndex(i)
+            self.combo.blockSignals(False)
+
+    def _set_enabled(self, on: bool, tip: str) -> None:
+        self.combo.setEnabled(on)
+        self.combo.setToolTip(tip)
+        self._label.setToolTip(tip)
+
+    def _paint(self, ack: str) -> None:
+        """ack = 'ok' | 'pending' | 'bad' → border (see theme.py) + a text cue."""
+        self._label.setText(
+            "Microstepping" + {"pending": " …", "bad": " ⚠"}.get(ack, "")
+        )
+        self.combo.setProperty("ack", ack)
+        s = self.combo.style()
+        s.unpolish(self.combo)
+        s.polish(self.combo)
 
 
 class RunStatusBar(QFrame):

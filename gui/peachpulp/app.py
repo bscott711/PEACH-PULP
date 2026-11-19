@@ -81,6 +81,10 @@ class MainWindow(QMainWindow):
             lambda i, s: self.link.send(P.cmd_jog(i, s if s else 500))
         )
         self._live.jogStopped.connect(lambda i: self.link.send(P.cmd_jog(i, 0)))
+        self._live.microstepRequested.connect(
+            lambda n: self.link.send(P.cmd_microstep(n))
+        )
+        self._live.message.connect(lambda m: self._append("ERR", m))
 
         self._auto = AutomatedPanel()
         self._auto.programChanged.connect(self._on_program_changed)
@@ -117,7 +121,7 @@ class MainWindow(QMainWindow):
         # --- link wiring ----------------------------------------
         link.telemetry.connect(self._on_telemetry)
         link.event.connect(lambda e: self._append("event", e))
-        link.error.connect(lambda e: self._append("ERR", e))
+        link.error.connect(self._on_link_error)
         link.log.connect(lambda m: self._append("fw", m))
         link.connected.connect(self._on_connected)
 
@@ -224,6 +228,11 @@ class MainWindow(QMainWindow):
         st.polish(self._status)
         if ok:
             self._upload.start()  # make the firmware match the editor
+
+    def _on_link_error(self, e: str) -> None:
+        self._append("ERR", e)
+        if e.upper().startswith("MICROSTEP"):  # "!ERR MICROSTEP …" reply
+            self._live.microstep_error(e)
 
     def _on_telemetry(self, t: P.Telemetry) -> None:
         self._last = t

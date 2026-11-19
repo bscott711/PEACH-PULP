@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QScrollArea,
     QVBoxLayout,
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import protocol as P
-from .widgets import PumpRow, RunStatusBar
+from .widgets import MicrostepSelector, PumpRow, RunStatusBar
 
 
 class LivePanel(QWidget):
@@ -26,6 +27,8 @@ class LivePanel(QWidget):
     enableToggled = Signal(int, bool)
     jogRequested = Signal(int, int)
     jogStopped = Signal(int)
+    microstepRequested = Signal(int)   # microsteps, one of P.MICROSTEP_CHOICES
+    message = Signal(str)              # a failure for the operator (app logs it)
 
     def __init__(self, count: int, names: List[str] | None = None, parent=None):
         super().__init__(parent)
@@ -35,6 +38,16 @@ class LivePanel(QWidget):
 
         hdr = QLabel("PUMPS")
         hdr.setObjectName("sectionHeader")
+
+        self.microstep = MicrostepSelector()
+        self.microstep.microstepRequested.connect(self.microstepRequested)
+        self.microstep.message.connect(self.message)
+
+        hdr_row = QHBoxLayout()
+        hdr_row.setContentsMargins(0, 0, 0, 0)
+        hdr_row.addWidget(hdr)
+        hdr_row.addStretch(1)
+        hdr_row.addWidget(self.microstep)
 
         # Two columns once there are more than four pumps, so every motor is on
         # screen at once without scrolling (the touchscreen is wide).
@@ -68,7 +81,7 @@ class LivePanel(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(10)
         root.addWidget(self.status)
-        root.addWidget(hdr)
+        root.addLayout(hdr_row)
         root.addWidget(scroll, 1)
 
     def set_pump_names(self, names: List[str]) -> None:
@@ -89,5 +102,10 @@ class LivePanel(QWidget):
 
     def apply_telemetry(self, t: P.Telemetry, label: str = "", total: int = 0) -> None:
         self.status.apply_telemetry(t, label, total)
+        self.microstep.apply_telemetry(t)
         for row in self.rows:
             row.apply_state(t.pumps[row.idx], t.running)
+
+    def microstep_error(self, text: str) -> None:
+        """Route a firmware ``!ERR MICROSTEP …`` reply to the selector."""
+        self.microstep.on_error(text)
