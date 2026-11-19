@@ -6,10 +6,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from peachpulp import protocol as P
-from peachpulp.widgets import PumpRow
+from peachpulp.widgets import PumpRow, _BarSlider
 
 
 @pytest.fixture(scope="module")
@@ -87,3 +89,59 @@ def test_running_sequence_clears_pending_and_mirrors(row):
     assert not row._confirm.isActive()
     assert row._hold.isChecked()          # sequence re-energises every driver
     assert not row._hold.isEnabled()
+
+
+# --- _BarSlider: tap-to-seek + centre-anchored fill --------------------
+
+@pytest.fixture
+def bar(app):
+    s = _BarSlider()
+    s.setRange(-P.SPEED_MAX, P.SPEED_MAX)
+    s.resize(200, 40)
+    s.show()
+    app.processEvents()
+    return s
+
+
+def _press(s, x):
+    ev = QMouseEvent(
+        QEvent.MouseButtonPress, QPointF(x, 20),
+        Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+    )
+    s.mousePressEvent(ev)
+
+
+def _release(s, x):
+    ev = QMouseEvent(
+        QEvent.MouseButtonRelease, QPointF(x, 20),
+        Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+    )
+    s.mouseReleaseEvent(ev)
+
+
+def test_tap_on_track_jumps_there_and_starts_a_drag(bar):
+    g, h = bar._groove_handle()
+    _press(bar, g.x() + g.width() - h.width() / 2 - 1)   # far right
+    assert bar.value() > P.SPEED_MAX * 0.9
+    assert bar.isSliderDown()                            # drag continues
+    _release(bar, g.x() + g.width())
+    assert not bar.isSliderDown()
+
+
+def test_drag_follows_the_finger_without_grabbing_the_handle(bar):
+    g, h = bar._groove_handle()
+    _press(bar, bar.width() / 2)                         # near centre -> ~0
+    mid = bar.value()
+    move = QMouseEvent(
+        QEvent.MouseMove, QPointF(g.x() + h.width() / 2 + 1, 20),
+        Qt.NoButton, Qt.LeftButton, Qt.NoModifier,
+    )
+    bar.mouseMoveEvent(move)
+    assert bar.value() < mid                             # tracked left to min-ish
+    _release(bar, g.x())
+
+
+def test_fill_paints_at_the_extremes(bar):
+    for v in (-P.SPEED_MAX, 0, 1234):
+        bar.setValue(v)
+        bar.render(QPixmap(bar.size()))                  # no crash, any sign

@@ -8,7 +8,14 @@ from __future__ import annotations
 from typing import List
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import protocol as P
 from .widgets import PumpRow, RunStatusBar
@@ -29,11 +36,16 @@ class LivePanel(QWidget):
         hdr = QLabel("PUMPS")
         hdr.setObjectName("sectionHeader")
 
+        # Two columns once there are more than four pumps, so every motor is on
+        # screen at once without scrolling (the touchscreen is wide).
+        cols = 2 if count > 4 else 1
+
         self.rows: List[PumpRow] = []
         host = QWidget()
-        rows_v = QVBoxLayout(host)
-        rows_v.setContentsMargins(0, 0, 0, 0)
-        rows_v.setSpacing(8)
+        grid = QGridLayout(host)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
         for i in range(count):
             row = PumpRow(i, names[i] if i < len(names) else None)
             row.speedChanged.connect(self.speedChanged)
@@ -41,8 +53,10 @@ class LivePanel(QWidget):
             row.jogRequested.connect(self.jogRequested)
             row.jogStopped.connect(self.jogStopped)
             self.rows.append(row)
-            rows_v.addWidget(row)
-        rows_v.addStretch(1)
+            grid.addWidget(row, i // cols, i % cols)
+        for c in range(cols):
+            grid.setColumnStretch(c, 1)
+        grid.setRowStretch(grid.rowCount(), 1)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

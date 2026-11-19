@@ -90,7 +90,10 @@ touchscreen. In fullscreen: **Esc** leaves fullscreen, **F11** toggles it, **Ctr
 
 **Live tab** (home) — direct manual control, one row per pump:
 
-- a draggable **speed bar** + a numeric box (steps/s, negative = reverse)
+- a **speed bar** (tap anywhere to jump, then drag) + a numeric box (steps/s);
+  the fill is anchored at zero — blue to the right for forward, amber to the
+  left for reverse
+- all motors on one screen (two columns), no scrolling
 - **Hold / Free** toggle — switch to *Free* to drop holding torque and hand-turn the
   syringe during setup; back to *Hold* to lock it
 - **Jog** — run this pump at the set speed while idle

@@ -1,7 +1,8 @@
 """Shared touch widgets: speed control, pump row, run-status bar."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -11,6 +12,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QSpinBox,
+    QStyle,
+    QStyleOptionSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +25,110 @@ _SETTLE_MS = 700
 _HOLD_CONFIRM_MS = 1800  # wait this long for telemetry to confirm a Hold/Free tap
 _DOT = "●"   # ●
 _PLAY = "▶"  # ▶
+
+
+class _BarSlider(QSlider):
+    """Horizontal slider tuned for the touchscreen.
+
+    * Tap anywhere on the track to jump there, then keep dragging — no need to
+      land on the handle first (stock ``QSlider`` only pages toward a groove tap).
+    * The fill is anchored at **zero**: run positive and a bar grows to the right
+      in one colour, negative and it grows left in another. There is always a
+      bar, and its length reads as distance from zero.
+    """
+
+    _TRACK = "#2c3440"
+    _POS = "#4aa3ff"
+    _NEG = "#f39c12"
+    _HANDLE = "#e7ebf2"
+    _HANDLE_OFF = "#6c7688"
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Horizontal, parent)
+        self.setMinimumHeight(30)
+
+    # ---- geometry helpers --------------------------------------------
+    def _groove_handle(self):
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        st = self.style()
+        groove = st.subControlRect(
+            QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self
+        )
+        handle = st.subControlRect(
+            QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self
+        )
+        return groove, handle
+
+    def _x_for(self, value: int, groove, handle) -> float:
+        span = groove.width() - handle.width()
+        pos = QStyle.sliderPositionFromValue(
+            self.minimum(), self.maximum(), value, span
+        )
+        return groove.x() + handle.width() / 2 + pos
+
+    def _value_at(self, x: float, groove, handle) -> int:
+        span = groove.width() - handle.width()
+        pos = round(x - groove.x() - handle.width() / 2)
+        return QStyle.sliderValueFromPosition(
+            self.minimum(), self.maximum(), pos, span
+        )
+
+    # ---- touch: tap-to-seek, then drag -----------------------------
+    def _seek(self, x: float) -> None:
+        groove, handle = self._groove_handle()
+        self.setValue(self._value_at(x, groove, handle))
+
+    def mousePressEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        if self.isEnabled() and ev.button() == Qt.LeftButton:
+            self.setSliderDown(True)
+            self._seek(ev.position().x())
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        if self.isSliderDown():
+            self._seek(ev.position().x())
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        if self.isSliderDown() and ev.button() == Qt.LeftButton:
+            self._seek(ev.position().x())
+            self.setSliderDown(False)
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+    # ---- centre-anchored two-colour fill --------------------------
+    def paintEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        groove, handle = self._groove_handle()
+        cy = self.rect().center().y()
+        h = 6.0
+        left = groove.x() + handle.width() / 2
+        right = groove.x() + groove.width() - handle.width() / 2
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+
+        p.setBrush(QColor(self._TRACK))
+        p.drawRoundedRect(QRectF(left, cy - h / 2, right - left, h), h / 2, h / 2)
+
+        v = self.value()
+        zero = max(self.minimum(), min(self.maximum(), 0))
+        zx = self._x_for(zero, groove, handle)
+        hx = self._x_for(v, groove, handle)
+        a, b = sorted((zx, hx))
+        if b - a > 0.5:
+            p.setBrush(QColor(self._POS if v >= 0 else self._NEG))
+            p.drawRoundedRect(QRectF(a, cy - h / 2, b - a, h), h / 2, h / 2)
+
+        r = 10.0
+        p.setBrush(QColor(self._HANDLE if self.isEnabled() else self._HANDLE_OFF))
+        p.drawEllipse(QPointF(hx, cy), r, r)
 
 
 class SpeedControl(QWidget):
@@ -39,14 +146,11 @@ class SpeedControl(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._slider = QSlider(Qt.Horizontal)
+        self._slider = _BarSlider()
         self._slider.setRange(lo, hi)
         self._slider.setSingleStep(50)
         self._slider.setPageStep(500)
-        self._slider.setMinimumWidth(110)
-        if lo < 0 < hi:
-            self._slider.setTickPosition(QSlider.TicksBelow)
-            self._slider.setTickInterval(hi)  # a centre + ends marker
+        self._slider.setMinimumWidth(90)
 
         self._box = QSpinBox()
         self._box.setRange(lo, hi)
@@ -142,7 +246,7 @@ class PumpRow(QFrame):
 
         self._name = QLabel(name or P.PUMP_ROLES[idx])
         self._name.setStyleSheet("font-weight:600;")
-        self._name.setMinimumWidth(78)
+        self._name.setMinimumWidth(64)
 
         self._speed = SpeedControl()
 
@@ -150,7 +254,7 @@ class PumpRow(QFrame):
         self._hold.setObjectName("holdtoggle")
         self._hold.setCheckable(True)
         self._hold.setChecked(True)
-        self._hold.setFixedWidth(96)
+        self._hold.setFixedWidth(84)
         self._hold.setMinimumHeight(44)
         self._hold.setToolTip(
             "HOLD = holding torque on.  FREE = torque off, hand-turn the syringe."
@@ -167,13 +271,13 @@ class PumpRow(QFrame):
 
         self._jog = QPushButton("Jog")
         self._jog.setCheckable(True)
-        self._jog.setFixedWidth(72)
+        self._jog.setFixedWidth(60)
         self._jog.setMinimumHeight(40)
         self._jog.setToolTip("hold to run this pump at the set speed while idle")
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 6, 12, 6)
-        row.setSpacing(10)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.setSpacing(8)
         row.addWidget(self._dot)
         row.addWidget(self._name)
         row.addWidget(self._speed, 1)
