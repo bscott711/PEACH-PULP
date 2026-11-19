@@ -25,6 +25,12 @@ icon + menu entry; `--off` removes the entries and autostart. No sudo. Safe to r
 re-installs the icon (`~/.local/share/icons/hicolor/scalable/apps/peach-pulp.svg`) and rewrites
 every entry. `deploy/launch.sh` starts the GUI by hand.
 
+The icon opens straight away, with no "Execute / Execute in Terminal / Open / Cancel" dialog: each
+entry is marked trusted (`gio`, retried on a private D-Bus session from a remote shell) and
+`quick_exec=1` is set in `~/.config/libfm/libfm.conf`. If the dialog still appears, log out and in
+once, or tick File Manager > Edit > Preferences > General > "Don't ask options on launch executable
+file". `PEACHPULP_NO_QUICK_EXEC=1` skips the libfm.conf change.
+
 **The icon keeps itself up to date.** Every launch (icon tap or boot autostart) first runs
 `deploy/update-code.sh`, which fast-forwards the checkout to the newest code pushed to
 `origin/gui/pi-pyside6`, then starts the GUI (the launcher restarts itself once after a sync, so
