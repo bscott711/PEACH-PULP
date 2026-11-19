@@ -2,7 +2,9 @@
 #
 # Pull the latest PEACH PULP GUI onto the Pi and restart it.
 # Safe to run any time — it force-syncs the deploy checkout to origin,
-# refreshes the venv, and (if installed) restarts the systemd service.
+# refreshes the venv + the desktop icon/entries, and (if installed) restarts
+# the systemd service. (The desktop icon also fast-forwards the code by itself
+# on every launch; this is the "force it now / repair it" path.)
 #
 # One-liner (run this whenever you want the newest code):
 #   curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6/gui/deploy/pi-update.sh | bash
@@ -35,6 +37,9 @@ if [ ! -x .venv/bin/python ]; then
 fi
 .venv/bin/pip install -r requirements.txt --quiet
 echo "  $(.venv/bin/python -c 'import PySide6, serial; print("PySide6", PySide6.__version__, "/ pyserial", serial.__version__)')"
+
+echo "== refreshing launcher icon + entries (autostart untouched) =="
+"$REPO_DIR/gui/deploy/install-launcher.sh" || echo "  (launcher refresh failed — ignoring)"
 
 echo "== self-test =="
 .venv/bin/python -m pytest -q

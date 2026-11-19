@@ -19,9 +19,31 @@ runs the tests, and checks Qt imports. Then `cd ~/PEACH-PULP/gui && .venv/bin/py
 ~/PEACH-PULP/gui/deploy/install-launcher.sh --autostart
 ```
 
-Adds a **PEACH PULP** app-menu entry and desktop icon (double-tap to open), and starts
-the GUI fullscreen on the touchscreen at every boot. Without `--autostart` you just get
-the icons; `--off` removes everything. No sudo. `deploy/launch.sh` starts it by hand.
+Adds a **PEACH PULP** app-menu entry and a desktop icon (a peach; double-tap to open), and starts
+the GUI fullscreen on the touchscreen at every boot. Without `--autostart` you just get the
+icon + menu entry; `--off` removes the entries and autostart. No sudo. Safe to re-run any time: it
+re-installs the icon (`~/.local/share/icons/hicolor/scalable/apps/peach-pulp.svg`) and rewrites
+every entry. `deploy/launch.sh` starts the GUI by hand.
+
+**The icon keeps itself up to date.** Every launch (icon tap or boot autostart) first runs
+`deploy/update-code.sh`, which fast-forwards the checkout to the newest code pushed to
+`origin/gui/pi-pyside6`, then starts the GUI (the launcher restarts itself once after a sync, so
+an updated `launch.sh` is picked up on that same launch). It is best-effort and never blocks or
+fails the launch:
+
+- **Offline / slow network** — the fetch is cut off after 8 s and the code is left as is.
+- **Fast-forward only** — it never resets, force-checks-out or discards anything. It is skipped
+  (and logged) when you have uncommitted changes to tracked files, when the checkout is on a
+  different branch, or when the Pi has local commits that are not on `origin` (diverged / ahead).
+  Untracked files (`.venv/`, notes) are ignored.
+- **Dependencies** — `pip install -r requirements.txt` runs only when `requirements.txt` changed
+  since the last successful install (and once on the first launch after this feature arrives).
+  If pip fails (offline), it is retried on the next launch.
+- **Log** — every launch appends a line to `~/.local/state/peachpulp/launch.log`
+  (`tail ~/.local/state/peachpulp/launch.log` to see what the last launch did; rotated at ~200 KB).
+- **Opt out** — `deploy/launch.sh --no-update`, or set `PEACHPULP_NO_UPDATE=1`.
+- Overrides (rarely needed): `PEACHPULP_BRANCH` (default `gui/pi-pyside6`), `PEACHPULP_REMOTE`
+  (default `origin`), `PEACHPULP_STATE_DIR` (log + stamp location).
 
 ### Octopus firmware updates — jumper-free
 
@@ -40,9 +62,12 @@ the board is bricked (predates the `DFU` command, or won't boot): BOOT0 jumper (
 
 ## Pull the latest onto the Pi
 
-Run this whenever you want the newest code on the Pi — it force-syncs the checkout
-to `origin`, refreshes the venv, re-runs the tests, and restarts the service if it's
-installed:
+Normally there is nothing to do: tapping the **PEACH PULP** icon (or rebooting, if autostart is
+on) pulls the newest pushed code first (see above). To force it right now, repair a checkout that
+the icon skipped (dirty or diverged), re-run the self-test and restart a running GUI, use the
+update script. It **force-syncs** the checkout to `origin` (discarding local edits), refreshes the
+venv, re-installs the launcher icon + entries (autostart is left as it is), re-runs the tests, and
+restarts the service if it's installed:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6/gui/deploy/pi-update.sh | bash
@@ -50,6 +75,13 @@ curl -fsSL https://raw.githubusercontent.com/bscott711/PEACH-PULP/gui/pi-pyside6
 
 or, once the repo is on the Pi: `~/PEACH-PULP/gui/deploy/pi-update.sh`
 (handy as an alias: `alias peach-update='~/PEACH-PULP/gui/deploy/pi-update.sh'`).
+
+Just want the new icon + self-updating launcher on a Pi that has the old launcher, without
+touching anything else:
+
+```bash
+cd ~/PEACH-PULP && git pull --ff-only && gui/deploy/install-launcher.sh
+```
 
 ## Run (dev, any machine)
 
@@ -74,7 +106,7 @@ and demoable without an Octopus.
 | `peachpulp/workspace.py` | `Workspace` / `PhaseStep` model + JSON save/load — pure |
 | `peachpulp/sim.py` | `FakeFirmware` — in-process protocol-faithful fake |
 | `peachpulp/link.py` | `SerialLink` (pyserial + QThread, auto-reconnect) and `SimLink` |
-| `peachpulp/widgets.py` | `SpeedControl` (bar + box), `PumpRow`, `RunStatusBar` |
+| `peachpulp/widgets.py` | `SpeedControl` (bar + box), `PumpRow`, `MicrostepSelector`, `RunStatusBar` |
 | `peachpulp/live.py` | `LivePanel` — the Live tab |
 | `peachpulp/automated.py` | phase-program editor + workspace bar — the Automated tab |
 | `peachpulp/theme.py` | dark/light theme — Fusion + palette + QSS, no third-party dep |
@@ -99,6 +131,16 @@ touchscreen. In fullscreen: **Esc** leaves fullscreen, **F11** toggles it, **Ctr
 - **Jog** — run this pump at the set speed while idle
 - run indicator dot
 - While an automated sequence runs, the rows become a read-only mirror of telemetry.
+
+**Microstepping** — the **Microstepping** box in the Live tab's header row (next to
+*PUMPS*) sets the TMC2209 microstepping for all pumps at once: Full, 1/2 … 1/256
+(default 1/16). It needs firmware that knows the `MICROSTEP` command; on older firmware the
+box is disabled ("Firmware too old: reflash to enable"). It is also disabled while a program
+or any pump is running ("Stop all pumps first"). A pick shows at once (dashed border) and is
+confirmed when the Octopus reports it back; if it doesn't (or refuses), the box reverts, turns
+red and the log says why. **Speed numbers keep their meaning** at every setting (steps/s at
+1/16), so changing it never makes a saved speed run faster or slower. The Octopus stores the
+setting itself; it is not part of a workspace.
 
 **Automated tab** — build the sequence:
 

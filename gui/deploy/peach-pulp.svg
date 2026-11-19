@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PEACH PULP launcher icon: a peach with a cleft, stem and leaf. Self-contained. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="flesh" cx="38%" cy="34%" r="80%">
+      <stop offset="0" stop-color="#ffd2a6"/>
+      <stop offset="0.45" stop-color="#ff9e68"/>
+      <stop offset="1" stop-color="#f0635a"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7cc86a"/>
+      <stop offset="1" stop-color="#3b9150"/>
+    </linearGradient>
+  </defs>
+
+  <!-- body -->
+  <path d="M128 74
+           C 108 56, 52 66, 40 120
+           C 30 176, 82 222, 128 222
+           C 174 222, 226 176, 216 120
+           C 204 66, 148 56, 128 74 Z"
+        fill="url(#flesh)" stroke="#d94f45" stroke-opacity="0.55" stroke-width="3"
+        stroke-linejoin="round"/>
+
+  <!-- cleft -->
+  <path d="M128 78 C 142 112, 142 164, 126 204"
+        fill="none" stroke="#c4473b" stroke-opacity="0.5" stroke-width="5"
+        stroke-linecap="round"/>
+
+  <!-- soft highlight -->
+  <ellipse cx="82" cy="122" rx="15" ry="34" transform="rotate(18 82 122)"
+           fill="#ffffff" fill-opacity="0.32"/>
+
+  <!-- stem -->
+  <path d="M128 78 C 128 64, 130 52, 136 40"
+        fill="none" stroke="#7a4a2b" stroke-width="9" stroke-linecap="round"/>
+
+  <!-- leaf -->
+  <path d="M136 50 C 152 22, 192 18, 216 34 C 202 62, 164 68, 136 50 Z"
+        fill="url(#leaf)" stroke="#2f7a42" stroke-opacity="0.6" stroke-width="2"
+        stroke-linejoin="round"/>
+  <path d="M141 49 C 166 42, 190 38, 208 36"
+        fill="none" stroke="#2f7a42" stroke-opacity="0.55" stroke-width="3"
+        stroke-linecap="round"/>
+</svg>
