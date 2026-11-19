@@ -101,12 +101,14 @@ keep the two in sync (a host-side conformance check lives with the GUI tests).
 | `PROGCLEAR` | begin staging a new program |
 | `PROGADD <sec> <s0> <s1> … <s7>` | append one phase: duration + 8 motor speeds |
 | `PROGCOMMIT` | swap the staged program in atomically (rejects an empty program) |
+| `MICROSTEP <n>` | microsteps per step for **all 8 drivers**, `n` ∈ {1, 2, 4, 8, 16, 32, 64, 128, 256}; persisted in flash, default 16. Bad/missing/non-integer `n` → `!ERR MICROSTEP 1\|2\|4\|8\|16\|32\|64\|128\|256`; while a program runs or any pump is moving (manual run / `JOG`) → `!ERR MICROSTEP busy` (`n` is validated first). Silent on success, like the other setters — the new value shows up as telemetry `ms` |
 | `DFU` | reboot into the ROM bootloader for a firmware update (no BOOT0 jumper) |
 | `STATE` | no-op; telemetry streams continuously |
 
 **Octopus → Pi:** JSON telemetry ~5 Hz —
-`{"phase":1,"nphases":5,"remaining":42,"pumps":[{"sp":..,"run":..,"en":..}, …]}`
-(`sp` = the running phase's speed while a sequence runs, else the live/jog speed);
+`{"phase":1,"nphases":5,"remaining":42,"ms":16,"pumps":[{"sp":..,"run":..,"en":..}, …]}`
+(`sp` = the running phase's speed while a sequence runs, else the live/jog speed; `ms` = current
+microsteps per step — older firmware omits it);
 events `!EVENT phase <n>` / `!EVENT done` / `!EVENT prog <n>` / `!ERR <msg>`; logs `# ...`.
 
 Implemented in `src/core/SerialLink.*` (replaces `NetworkManager`). Parsed commands post a
@@ -114,12 +116,23 @@ Implemented in `src/core/SerialLink.*` (replaces `NetworkManager`). Parsed comma
 in `controller.cpp` and is only touched from that task, so `controller_task` stays the sole
 mutator of `systemState`.
 
+**Microstepping.** Speed numbers on the wire (`SPEED`, `JOG`, `PROGADD`, telemetry `sp`) always
+mean *steps/s at 1/16 microstepping*, whatever `MICROSTEP` is set to. `MotorNode` scales at send
+time (`microstepsScaleSpeed()` in `src/core/Microstep.h`): `VACTUAL = round(speed · ms / 16)`, a
+non-zero speed is never rounded to 0, clamped to `MOTOR_MAX_SAFE_STEPS`; at `ms = 16` it is the
+identity. `controller_task` validates "busy", updates `systemState.microsteps`, and posts
+`SET_MICROSTEPS` to each `MotorNode`, which halts the shaft, re-pushes the full driver config at the
+new resolution (`CHOPCONF.MRES`; the 5 s `DRIVER_REASSERT_MS` self-heal uses the current value too)
+and forces a VACTUAL resend. The value is saved with the debounced, idle-only flash write and loaded
+before the drivers are configured at boot. (At the protocol speed cap of 5000 the largest VACTUAL is
+80000 at `ms = 256`, so the 100000 clamp is never reached.)
+
 ## What carries over unchanged
 
 - `src/tasks/ActiveMotionNode.h` — the Active-Object template (already vanilla FreeRTOS)
 - The `controller_task` FSM shape, STOP/SKIP event-group model, debounced flash persistence
-- `MotorDriver` VACTUAL config: microsteps 16, StealthChop on, CoolStep off, run/hold current
-  (currents re-tuned for the real pump motors)
+- `MotorDriver` VACTUAL config: microsteps 16 by default (now runtime-selectable via `MICROSTEP`),
+  StealthChop on, CoolStep off, run/hold current (currents re-tuned for the real pump motors)
 - `MotorNode::hwUpdate` send-on-change (now limits SW-serial writes instead of shared-bus traffic)
 
 ## What's ESP32-specific and gets replaced
@@ -127,7 +140,7 @@ mutator of `systemState`.
 | ESP32 | STM32 |
 |---|---|
 | `esp_log.h` / `ESP_LOGx` | trimmed `PEACH_LOG*` → `Serial` `#` lines (`src/core/Log.h`) |
-| `Preferences` / NVS (`StorageManager`) | STM32 emulated-EEPROM flash page (`<EEPROM.h>` `eeprom_buffer_*`); blob v3 = live speeds + the whole program (~680 B) |
+| `Preferences` / NVS (`StorageManager`) | STM32 emulated-EEPROM flash page (`<EEPROM.h>` `eeprom_buffer_*`); blob v3 = live speeds + the whole program + a microsteps code (~680 B) |
 | `NetworkManager` (WiFi/mDNS/OTA/6666 bridge) | `SerialLink` (USB CDC command + telemetry) |
 | `Serial1.begin(baud, cfg, rx, tx)` 4-arg, shared TMC bus | per-driver one-wire `SoftwareSerial` (write-only) |
 | `SPI.begin(sck,-1,mosi,-1)`, `IRAM_ATTR`, seesaw, U8g2 | deleted with the on-device UI |

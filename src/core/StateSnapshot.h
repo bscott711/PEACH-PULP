@@ -8,6 +8,7 @@ struct StateSnapshot {
   int currentPhase;      // -1 idle, else 0..nPhases-1
   uint8_t nPhases;       // length of the committed program
   uint32_t phaseRemainingS;
+  uint16_t microsteps;   // telemetry "ms": current microsteps/step (1..256)
 
   // telemetry "sp": the running phase's speed for this pump while a sequence
   // runs, else the live/jog speed. Matches gui/peachpulp/sim.py.

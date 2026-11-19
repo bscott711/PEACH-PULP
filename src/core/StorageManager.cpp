@@ -1,5 +1,6 @@
 #include "core/StorageManager.h"
 #include "core/Log.h"
+#include "core/Microstep.h"
 #include <string.h>
 #include <EEPROM.h> // STM32 core: emulated EEPROM in flash + eeprom_buffer_* API
 
@@ -9,7 +10,10 @@ static const uint16_t MAGIC = 0x9E03; // v3 layout
 struct PersistBlob {
   uint16_t magic;
   uint8_t nPhases; // 0 ⇒ caller uses the seed program
-  uint8_t _pad;
+  // Microsteps code (core/Microstep.h): 0 = never stored → 16, 1..9 = log2(n)+1.
+  // Reuses the old pad byte (always written as 0), so the v3 layout and MAGIC are
+  // unchanged: an existing blob keeps its program and boots at 16 microsteps.
+  uint8_t msCode;
   int32_t liveSpeed[NUM_PUMPS];
   ProgramPhase program[MAX_PHASES];
 };
@@ -58,6 +62,15 @@ void StorageManager::saveProgram(const ProgramPhase *program, uint8_t nPhases) {
   memcpy(blob.program, program, sizeof(ProgramPhase) * nPhases);
   blobWrite();
 }
+
+void StorageManager::saveMicrosteps(int microsteps) {
+  uint8_t code = microstepsEncode(microsteps);
+  if (code == 0 || code == blob.msCode) return; // invalid, or unchanged: spare the flash
+  blob.msCode = code;
+  blobWrite();
+}
+
+int StorageManager::loadMicrosteps() { return microstepsDecode(blob.msCode); }
 
 uint8_t StorageManager::loadProgram(ProgramPhase *dst) {
   if (blob.nPhases == 0 || blob.nPhases > MAX_PHASES) return 0;

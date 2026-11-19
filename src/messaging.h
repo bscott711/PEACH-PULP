@@ -7,8 +7,9 @@
 // Pump command  (controller_task → MotorNode, one queue per pump)
 // ============================================================================
 enum class MotorCmdAction {
-  SET_SPEED,   // value = signed steps/s (VACTUAL)
-  SET_ENABLED, // value != 0 → holding torque on
+  SET_SPEED,      // value = signed steps/s at 1/16 microstep (scaled to VACTUAL on send)
+  SET_ENABLED,    // value != 0 → holding torque on
+  SET_MICROSTEPS, // value = 1|2|4|…|256 microsteps per step; re-pushes driver config
 };
 
 struct MotorCommand {
@@ -37,6 +38,7 @@ enum class ProtoAction {
   PROG_CLEAR,    // begin staging a new program
   PROG_ADD,      // a = seconds, speeds[] = per-motor; append one staged phase
   PROG_COMMIT,   // swap the staged program into effect
+  SET_MICROSTEP, // a = 1|2|4|…|256 microsteps per step, all drivers; rejected while busy
 };
 
 struct ProtoCommand {

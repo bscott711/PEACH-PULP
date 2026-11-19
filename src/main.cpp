@@ -33,7 +33,9 @@ void setup() {
 
   // Start one Active-Object task per pump.
   for (int i = 0; i < NUM_PUMPS; i++) {
-    g_pumps[i] = new MotorNode(kPumpConfigs[i]);
+    // systemState.microsteps was loaded from flash by initSystemState() above, so
+    // each driver is configured once, at the stored resolution (default 16).
+    g_pumps[i] = new MotorNode(kPumpConfigs[i], systemState.microsteps);
     char name[10];
     snprintf(name, sizeof(name), "pump%d", i);
     g_pumps[i]->start(name, STACK_PUMP_NODE, PRIO_PUMP_NODE);

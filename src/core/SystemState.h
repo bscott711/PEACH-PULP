@@ -43,6 +43,10 @@ struct SystemState {
   // syringe can be hand-turned; true = normal hold/run.
   bool pumpEnabled[NUM_PUMPS];
 
+  // Microsteps per step for all 8 drivers (1..256, power of two). Written only
+  // by controller_task (MICROSTEP verb); loaded from flash at boot, default 16.
+  uint16_t microsteps;
+
   // The committed automated program.
   ProgramPhase program[MAX_PHASES];
   uint8_t nPhases; // 0..MAX_PHASES

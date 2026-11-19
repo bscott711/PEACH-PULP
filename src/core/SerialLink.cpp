@@ -1,5 +1,6 @@
 #include "core/SerialLink.h"
 #include "core/DfuReboot.h"
+#include "core/Microstep.h"
 #include "core/StateSnapshot.h"
 #include "messaging.h"
 #include <Arduino.h>
@@ -90,6 +91,15 @@ static void parseLine(char *line) {
     parseProgAdd();
   } else if (!strcasecmp(cmd, "PROGCOMMIT")) {
     post(ProtoAction::PROG_COMMIT);
+  } else if (!strcasecmp(cmd, "MICROSTEP")) {
+    // Strict integer parse (atoi would accept "16abc"); validate n before the
+    // controller checks "busy".
+    char *t = strtok(nullptr, " \t\r\n");
+    char *end = nullptr;
+    long n = t ? strtol(t, &end, 10) : 0;
+    if (t && *end == '\0' && n >= 1 && n <= 256 && microstepsValid((int)n))
+      post(ProtoAction::SET_MICROSTEP, (int)n);
+    else serialEmit(MICROSTEP_USAGE_ERR);
   } else if (!strcasecmp(cmd, "DFU")) {
     serialEmit("!EVENT dfu"); // reboot into the ROM bootloader for a firmware update
     dfuReboot();
@@ -101,9 +111,9 @@ static void parseLine(char *line) {
 static void emitTelemetry(const StateSnapshot &s) {
   char j[512];
   int n = snprintf(j, sizeof(j),
-                   "{\"phase\":%d,\"nphases\":%u,\"remaining\":%lu,\"pumps\":[",
+                   "{\"phase\":%d,\"nphases\":%u,\"remaining\":%lu,\"ms\":%u,\"pumps\":[",
                    s.currentPhase, (unsigned)s.nPhases,
-                   (unsigned long)s.phaseRemainingS);
+                   (unsigned long)s.phaseRemainingS, (unsigned)s.microsteps);
   for (int i = 0; i < NUM_PUMPS && n < (int)sizeof(j); i++) {
     n += snprintf(j + n, sizeof(j) - n,
                   "%s{\"sp\":%d,\"run\":%d,\"en\":%d,\"ok\":%d}", i ? "," : "",

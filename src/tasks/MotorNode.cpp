@@ -18,12 +18,13 @@ static constexpr uint8_t COMM_FAIL_WARN = 2;
 // reassert bursts so all eight drivers don't hit the UART mutex on one cycle.
 static uint8_t s_nodeSeq = 0;
 
-MotorNode::MotorNode(const MotorConfig &conf)
+MotorNode::MotorNode(const MotorConfig &conf, uint16_t initialMicrosteps)
     : config(conf),
       swSerial(conf.uartPin, conf.uartPin), // one-wire, half-duplex
       targetSpeed(0),
       lastSentSpeed(SPEED_UNSENT),
       isEnabled(true),
+      microsteps(microstepsValid(initialMicrosteps) ? initialMicrosteps : MICROSTEPS_DEFAULT),
       commOk(false),
       commFail(0),
       reassertAccumMs((s_nodeSeq++ * DRIVER_REASSERT_MS) / NUM_PUMPS) {}
@@ -33,7 +34,7 @@ void MotorNode::hwInit() {
   TMC2209::Settings s = {};
 #endif
   if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
-    driver.begin(swSerial, config.enPin);
+    driver.begin(swSerial, config.enPin, microsteps);
 #if DRIVER_VERIFY
     s = driver.readSettings(swSerial);
 #endif
@@ -78,6 +79,23 @@ void MotorNode::processCommand(const MotorCommand &cmd) {
         xSemaphoreGive(xUARTMutex);
       }
       break;
+
+    case MotorCmdAction::SET_MICROSTEPS: {
+      const uint16_t ms = (uint16_t)cmd.value;
+      if (!microstepsValid(ms) || ms == microsteps) break;
+      // The controller only issues this while idle, but a STOP/JOG-0 can still be
+      // a few ms from reaching us: halt the shaft before the step size changes.
+      if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
+        driver.stop();
+        xSemaphoreGive(xUARTMutex);
+      }
+      microsteps = ms;
+      // Full config push at the new resolution (also restores the enable state),
+      // then force a VACTUAL resend — rescaled — on the next hwUpdate.
+      reassertDriver();
+      lastSentSpeed = SPEED_UNSENT;
+      break;
+    }
   }
 }
 
@@ -88,7 +106,7 @@ void MotorNode::reassertDriver() {
   // and motion is undisturbed (VACTUAL is not touched here).
   if (xUARTMutex == NULL || xSemaphoreTake(xUARTMutex, portMAX_DELAY) != pdTRUE) return;
 
-  driver.reassertConfig();
+  driver.reassertConfig(microsteps);
   if (isEnabled) {
     driver.enable();
   } else {
@@ -127,7 +145,7 @@ void MotorNode::hwUpdate() {
   // Write VACTUAL only on change — limits software-UART traffic / IRQ windows.
   if (targetSpeed != lastSentSpeed) {
     if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
-      driver.setVelocity(targetSpeed);
+      driver.setVelocity(microstepsScaleSpeed(targetSpeed, microsteps, MOTOR_MAX_SAFE_STEPS));
       xSemaphoreGive(xUARTMutex);
     }
     lastSentSpeed = targetSpeed;
@@ -149,5 +167,10 @@ bool MotorNode::setSpeed(int speed) {
 
 bool MotorNode::setEnabled(bool enable) {
   MotorCommand cmd{MotorCmdAction::SET_ENABLED, enable ? 1.0f : 0.0f};
+  return sendCommand(cmd);
+}
+
+bool MotorNode::setMicrosteps(uint16_t n) {
+  MotorCommand cmd{MotorCmdAction::SET_MICROSTEPS, (float)n};
   return sendCommand(cmd);
 }

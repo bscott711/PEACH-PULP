@@ -1,16 +1,16 @@
 #include "drivers/MotorDriver.h"
 #include "rtos.h"
 
-void motorDriver::applyConfig() {
+void motorDriver::applyConfig(uint16_t microsteps) {
   driver.setRMSCurrent(RUN_CURRENT_MA, SENSE_RESISTOR_OHMS, HOLD_CURRENT_MULTIPLIER);
   driver.disableAnalogCurrentScaling();
   driver.disableCoolStep();
   driver.enableStealthChop();
-  driver.setMicrostepsPerStep(16);
+  driver.setMicrostepsPerStep(microsteps); // CHOPCONF.MRES; GCONF.mstep_reg_select is set at setup()
   driver.setCoolStepDurationThreshold(0);
 }
 
-void motorDriver::begin(SoftwareSerial &serial, uint32_t enPin) {
+void motorDriver::begin(SoftwareSerial &serial, uint32_t enPin, uint16_t microsteps) {
   // SoftwareSerial overload — address 0 (each driver has its own one-wire link).
   // Any internal read attempts during setup() time out harmlessly; the VACTUAL
   // and config writes are what matter.
@@ -18,13 +18,13 @@ void motorDriver::begin(SoftwareSerial &serial, uint32_t enPin) {
 
   driver.setHardwareEnablePin(enPin);
 
-  applyConfig();
+  applyConfig(microsteps);
 
   driver.enable();
   driver.moveAtVelocity(0);
 }
 
-void motorDriver::reassertConfig() { applyConfig(); }
+void motorDriver::reassertConfig(uint16_t microsteps) { applyConfig(microsteps); }
 
 TMC2209::Settings motorDriver::readSettings(SoftwareSerial &serial) {
   // Half-duplex: claim the RX listener slot for this one-wire pin. The janelia

@@ -5,6 +5,7 @@
 #include "core/Protocol.h"
 #include "core/StateSnapshot.h"
 #include "core/StorageManager.h"
+#include "core/Microstep.h"
 #include "core/SerialLink.h"
 #include "core/Log.h"
 #include "tasks/MotorNode.h"
@@ -27,6 +28,9 @@ static bool s_stagingOpen = false;
 
 // Program needs a (debounced, idle-only) flash write.
 static bool s_programDirty = false;
+
+// Microsteps changed and need a (debounced, idle-only) flash write.
+static bool s_microstepsDirty = false;
 
 // eeprom_buffer_flush() erases a 128 KiB F4 sector — it BLOCKS ~1-2 s and starves
 // the FreeRTOS tick while it runs. Persistence is therefore debounced and only
@@ -58,6 +62,7 @@ void initSystemState() {
       systemState.pumpManualRun[i] = false;
       systemState.pumpEnabled[i] = true;
     }
+    systemState.microsteps = (uint16_t)StorageManager::loadMicrosteps(); // 16 if unset/invalid
     systemState.nPhases = StorageManager::loadProgram(systemState.program);
     if (systemState.nPhases == 0) {
       systemState.nPhases = buildSeedProgram(systemState.program);
@@ -89,6 +94,38 @@ static void startSequence() {
     PEACH_LOGI(TAG, "RUN (%d phases)", systemState.nPhases);
   }
   xSemaphoreGive(systemStateMutex);
+}
+
+// MICROSTEP <n>: SerialLink already validated n; here we check "busy" (a program
+// is running, or any pump is being driven by a manual run / JOG), then change
+// systemState and tell every MotorNode. A no-op if n is already current.
+static void applyMicrostep(int n) {
+  if (!microstepsValid(n)) return; // SerialLink replied with the usage error
+
+  bool busy = false;
+  bool changed = false;
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+    busy = (systemState.currentPhase >= 0);
+    for (int i = 0; i < NUM_PUMPS; i++)
+      if (systemState.pumpManualRun[i] && systemState.liveSpeedSteps[i] != 0) busy = true;
+    if (!busy && systemState.microsteps != n) {
+      systemState.microsteps = (uint16_t)n;
+      changed = true;
+    }
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  if (busy) {
+    serialEmit("!ERR MICROSTEP busy");
+    return;
+  }
+  if (!changed) return;
+
+  s_microstepsDirty = true; // flash write happens debounced + idle-only, in controller_task
+  // Same path as every other pump command: a per-node FIFO queue, so the change
+  // lands before any later SET_SPEED and each node rescales VACTUAL accordingly.
+  for (int i = 0; i < NUM_PUMPS; i++) g_pumps[i]->setMicrosteps((uint16_t)n);
+  PEACH_LOGI(TAG, "microsteps -> %d", n);
 }
 
 static void applyProtoCommand(const ProtoCommand &pc) {
@@ -180,6 +217,10 @@ static void applyProtoCommand(const ProtoCommand &pc) {
       }
       s_stagingOpen = false;
       break;
+
+    case ProtoAction::SET_MICROSTEP:
+      applyMicrostep(pc.a);
+      break;
   }
 }
 
@@ -200,6 +241,7 @@ void controller_task(void *pvParameters) {
     lastAppliedEnabled[i] = systemState.pumpEnabled[i];
   }
   uint32_t programDirtySince = 0;
+  uint32_t microstepsDirtySince = 0;
 
   for (;;) {
     // 1. protocol commands from SerialLink
@@ -215,6 +257,9 @@ void controller_task(void *pvParameters) {
     StateSnapshot snap;
     memset(&snap, 0, sizeof(snap));
     snap.currentPhase = -1; // safe default if the state lock times out
+    // controller_task is the only writer of systemState.microsteps, so reading it
+    // here without the lock is race-free (and survives a lock timeout).
+    snap.microsteps = systemState.microsteps;
 
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       // --- sequence state machine ---
@@ -314,6 +359,18 @@ void controller_task(void *pvParameters) {
       }
     } else if (!s_programDirty) {
       programDirtySince = 0;
+    }
+
+    if (canSave && s_microstepsDirty) {
+      if (microstepsDirtySince == 0) {
+        microstepsDirtySince = nowMs;
+      } else if (nowMs - microstepsDirtySince >= SAVE_DEBOUNCE_MS) {
+        StorageManager::saveMicrosteps(snap.microsteps); // no-op if unchanged
+        s_microstepsDirty = false;
+        microstepsDirtySince = 0;
+      }
+    } else if (!s_microstepsDirty) {
+      microstepsDirtySince = 0;
     }
 
     // 4. publish snapshot for SerialLink
