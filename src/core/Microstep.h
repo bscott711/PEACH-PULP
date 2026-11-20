@@ -4,10 +4,11 @@
 // Runtime microstepping (MICROSTEP <n> verb). Pure helpers, no Arduino/RTOS
 // includes, so they can be unit-checked on the host.
 //
-// Speed numbers on the wire (SPEED / JOG / PROGADD) keep one physical meaning:
-// "steps/s at 1/16 microstepping". The TMC2209 VACTUAL register counts
-// microsteps at whatever resolution is selected, so MotorNode scales the speed
-// at send time with microstepsScaleSpeed(). At 16 that is the identity.
+// Speed numbers on the wire (SPEED / JOG / PROGADD) are microsteps/s at the
+// selected resolution, sent to the TMC2209 VACTUAL register as is (clamped by
+// motorDriver::setVelocity), never scaled by ms: the same number turns the shaft
+// 16/ms times as fast as it does at 1/16 (1/32 is half speed, 1/8 is double). At
+// 16 behaviour is unchanged.
 
 #define MICROSTEPS_DEFAULT 16
 
@@ -34,18 +35,4 @@ inline uint8_t microstepsEncode(int n) {
 inline uint16_t microstepsDecode(uint8_t code) {
   return (code >= 1 && code <= 9) ? (uint16_t)(1u << (code - 1))
                                   : (uint16_t)MICROSTEPS_DEFAULT;
-}
-
-// VACTUAL for a physical speed (steps/s at 1/16) at `ms` microsteps per step:
-//   round(speed * ms / 16), half away from zero; non-zero speed -> at least +/-1;
-//   clamped to +/-maxSteps; speed 0 -> 0. At ms == 16 this is clamp(speed).
-// 64-bit intermediate so no input can overflow.
-inline int microstepsScaleSpeed(int speed, int ms, int maxSteps) {
-  if (speed == 0) return 0;
-  const bool neg = speed < 0;
-  const int64_t mag = neg ? -(int64_t)speed : (int64_t)speed;
-  int64_t v = (mag * ms + 8) / 16;
-  if (v < 1) v = 1;
-  if (v > maxSteps) v = maxSteps;
-  return neg ? -(int)v : (int)v;
 }

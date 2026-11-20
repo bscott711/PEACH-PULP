@@ -29,7 +29,9 @@ static bool s_stagingOpen = false;
 // Program needs a (debounced, idle-only) flash write.
 static bool s_programDirty = false;
 
-// Microsteps changed and need a (debounced, idle-only) flash write.
+// Microsteps changed and need a (debounced) flash write, only while no program
+// runs and no pump moves (MICROSTEP is accepted during a jog, so the flash stall
+// must not land while a pump is driven).
 static bool s_microstepsDirty = false;
 
 // eeprom_buffer_flush() erases a 128 KiB F4 sector — it BLOCKS ~1-2 s and starves
@@ -97,8 +99,8 @@ static void startSequence() {
 }
 
 // MICROSTEP <n>: SerialLink already validated n; here we check "busy" (a program
-// is running, or any pump is being driven by a manual run / JOG), then change
-// systemState and tell every MotorNode. A no-op if n is already current.
+// is running; a manual run / JOG does NOT block it), then change systemState and
+// tell every MotorNode. A no-op if n is already current.
 static void applyMicrostep(int n) {
   if (!microstepsValid(n)) return; // SerialLink replied with the usage error
 
@@ -106,8 +108,6 @@ static void applyMicrostep(int n) {
   bool changed = false;
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     busy = (systemState.currentPhase >= 0);
-    for (int i = 0; i < NUM_PUMPS; i++)
-      if (systemState.pumpManualRun[i] && systemState.liveSpeedSteps[i] != 0) busy = true;
     if (!busy && systemState.microsteps != n) {
       systemState.microsteps = (uint16_t)n;
       changed = true;
@@ -121,9 +121,10 @@ static void applyMicrostep(int n) {
   }
   if (!changed) return;
 
-  s_microstepsDirty = true; // flash write happens debounced + idle-only, in controller_task
+  s_microstepsDirty = true; // flash write happens debounced, once no program runs and no pump moves
   // Same path as every other pump command: a per-node FIFO queue, so the change
-  // lands before any later SET_SPEED and each node rescales VACTUAL accordingly.
+  // stays ordered with any STOP / JOG-0 / SET_SPEED. A jogging pump halts, is
+  // reconfigured and resumes at the same raw speed number (see MotorNode).
   for (int i = 0; i < NUM_PUMPS; i++) g_pumps[i]->setMicrosteps((uint16_t)n);
   PEACH_LOGI(TAG, "microsteps -> %d", n);
 }
@@ -361,7 +362,16 @@ void controller_task(void *pvParameters) {
       programDirtySince = 0;
     }
 
-    if (canSave && s_microstepsDirty) {
+    // MICROSTEP is accepted during a jog, so also hold the microsteps write while
+    // any pump is driven: the flash-erase stall must not delay a STOP. The timer
+    // restarts each cycle a pump moves, so the write lands SAVE_DEBOUNCE_MS after
+    // the pumps stop.
+    bool pumpsIdle = true;
+    for (int i = 0; i < NUM_PUMPS; i++) {
+      if (snap.pumpRunning[i]) pumpsIdle = false;
+    }
+
+    if (canSave && pumpsIdle && s_microstepsDirty) {
       if (microstepsDirtySince == 0) {
         microstepsDirtySince = nowMs;
       } else if (nowMs - microstepsDirtySince >= SAVE_DEBOUNCE_MS) {
@@ -369,8 +379,8 @@ void controller_task(void *pvParameters) {
         s_microstepsDirty = false;
         microstepsDirtySince = 0;
       }
-    } else if (!s_microstepsDirty) {
-      microstepsDirtySince = 0;
+    } else if (!s_microstepsDirty || !pumpsIdle) {
+      microstepsDirtySince = 0; // clean, or a pump is moving: (re)start the debounce
     }
 
     // 4. publish snapshot for SerialLink

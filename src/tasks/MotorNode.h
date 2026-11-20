@@ -21,7 +21,7 @@ private:
   SoftwareSerial swSerial; // one-wire: rx == tx == config.uartPin
   motorDriver driver;
 
-  int targetSpeed;   // physical speed, steps/s at 1/16 microstep (scaled on send)
+  int targetSpeed;   // microsteps/s at the selected resolution (sent to VACTUAL as is)
   int lastSentSpeed; // send-on-change guard for the software UART
   bool isEnabled;
   uint16_t microsteps; // current microsteps/step; sole owner, passed to every config push

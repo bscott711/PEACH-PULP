@@ -83,15 +83,16 @@ void MotorNode::processCommand(const MotorCommand &cmd) {
     case MotorCmdAction::SET_MICROSTEPS: {
       const uint16_t ms = (uint16_t)cmd.value;
       if (!microstepsValid(ms) || ms == microsteps) break;
-      // The controller only issues this while idle, but a STOP/JOG-0 can still be
-      // a few ms from reaching us: halt the shaft before the step size changes.
+      // The controller issues this whenever no program is running, so a pump may
+      // be jogging: halt the shaft before the step size changes.
       if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
         driver.stop();
         xSemaphoreGive(xUARTMutex);
       }
       microsteps = ms;
       // Full config push at the new resolution (also restores the enable state),
-      // then force a VACTUAL resend — rescaled — on the next hwUpdate.
+      // then force a VACTUAL resend of the same targetSpeed on the next hwUpdate,
+      // so a jogging pump resumes at the same number (now 16/ms times as fast).
       reassertDriver();
       lastSentSpeed = SPEED_UNSENT;
       break;
@@ -145,7 +146,7 @@ void MotorNode::hwUpdate() {
   // Write VACTUAL only on change — limits software-UART traffic / IRQ windows.
   if (targetSpeed != lastSentSpeed) {
     if (xUARTMutex != NULL && xSemaphoreTake(xUARTMutex, portMAX_DELAY) == pdTRUE) {
-      driver.setVelocity(microstepsScaleSpeed(targetSpeed, microsteps, MOTOR_MAX_SAFE_STEPS));
+      driver.setVelocity(targetSpeed); // raw microsteps/s; setVelocity clamps to MOTOR_MAX_SAFE_STEPS
       xSemaphoreGive(xUARTMutex);
     }
     lastSentSpeed = targetSpeed;

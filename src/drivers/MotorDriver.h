@@ -31,7 +31,7 @@ public:
   // never gate motion on this; software-UART RX timing is not guaranteed.
   bool verifyComms(SoftwareSerial &serial);
 
-  void setVelocity(int newSpeed); // signed VACTUAL, already scaled for the microstep setting
+  void setVelocity(int newSpeed); // signed raw VACTUAL (microsteps/s at the current resolution), clamped to MOTOR_MAX_SAFE_STEPS
   void stop();
   void enable();
   void disable();
