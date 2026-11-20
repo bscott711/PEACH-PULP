@@ -277,7 +277,9 @@ class PumpRow(QFrame):
         self._jog.setCheckable(True)
         self._jog.setFixedWidth(60)
         self._jog.setMinimumHeight(40)
-        self._jog.setToolTip("hold to run this pump at the set speed while idle")
+        self._jog.setToolTip(
+            "tap to start, tap again to stop (at the set speed, while idle)"
+        )
 
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 6, 10, 6)
@@ -389,8 +391,10 @@ def microstep_label(n: int) -> str:
 class MicrostepSelector(QWidget):
     """Live-tab "Microstepping" picker. One setting for all drivers (``MICROSTEP <n>``).
 
-    Speed numbers keep their meaning at every setting (steps/s at 1/16), so this
-    changes smoothness/torque, not how fast a given number runs.
+    Speed numbers are raw microsteps/s at the chosen setting, so a finer setting is
+    slower for the same number (and a coarser one faster): the factor against the
+    1/16 default is ``16 / n``. The caption beside the combo spells that out for
+    the value shown (``speed x0.5 vs 1/16``).
 
     The firmware is the source of truth and the combo follows telemetry ``ms``.
     A pick is optimistic, like Hold/Free: it shows at once (dashed border) until
@@ -398,17 +402,20 @@ class MicrostepSelector(QWidget):
     firmware answers ``!ERR MICROSTEP …``, the combo reverts to the telemetry
     value (red border) and ``message`` says why.
 
-    Disabled while a program or any pump runs (the firmware rejects it) and on
-    firmware that doesn't report ``ms`` yet. A short caption beside the combo says
-    which (a touchscreen never shows tooltips); it is hidden while enabled.
+    May be changed while a pump jogs (the firmware re-applies it at the new
+    resolution); disabled only while a program runs (the firmware rejects it) and
+    on firmware that doesn't report ``ms`` yet. A short caption beside the combo
+    says which (a touchscreen never shows tooltips); the speed-effect caption
+    takes its place while the combo is enabled.
     """
 
     microstepRequested = Signal(int)   # microsteps, one of P.MICROSTEP_CHOICES
     message = Signal(str)              # a failure the operator should see (-> log)
 
     _HINT = (
-        "Microstepping for all pumps. Speed numbers keep their meaning "
-        "(steps/s at 1/16)."
+        "Microstepping for all pumps. Speed numbers are microsteps/s at this "
+        "setting: a finer setting is slower for the same number. "
+        "Can be changed while a pump jogs, not while a program runs."
     )
     _NO_MS_MSG = (
         "firmware has no MICROSTEP support — "
@@ -446,6 +453,15 @@ class MicrostepSelector(QWidget):
         self._why.setVisible(False)
         lay.addWidget(self._why)
 
+        # What the shown value does to speed, as visible text; only while enabled
+        # (the _why caption covers the disabled states). Same muted style.
+        self._effect = QLabel()
+        self._effect.setObjectName("microstepEffect")
+        self._effect.setStyleSheet("color: palette(placeholder-text); font-size: 12px;")
+        self._effect.setWordWrap(False)
+        self._effect.setVisible(False)
+        lay.addWidget(self._effect)
+
         # _current = last value telemetry reported (None until/unless it does);
         # _want = the un-confirmed pick (None once telemetry agrees).
         self._current: int | None = None
@@ -468,6 +484,7 @@ class MicrostepSelector(QWidget):
         self._want = n
         self._confirm.start()
         self._paint("pending")
+        self._refresh_effect()
         self.microstepRequested.emit(n)
 
     def _unconfirmed(self) -> None:
@@ -484,7 +501,7 @@ class MicrostepSelector(QWidget):
         """The firmware answered ``!ERR MICROSTEP …`` (payload as parse_line gives it)."""
         if self._want is None:
             return  # nothing of ours in flight
-        why = "pumps are running" if text.rstrip().endswith("busy") else text
+        why = "a program is running" if text.rstrip().endswith("busy") else text
         self._fail("microstepping change rejected ({})".format(why))
 
     def _fail(self, what: str) -> None:
@@ -524,9 +541,8 @@ class MicrostepSelector(QWidget):
             self._show(ms)
             self._paint("ok")
 
-        busy = t.running or any(p.running for p in t.pumps)
-        if busy:
-            self._set_enabled(False, "Stop all pumps first", "stop pumps first")
+        if t.running:   # a jogging pump is fine; only a running program blocks it
+            self._set_enabled(False, "Stop the program first", "program running")
         else:
             self._set_enabled(True, self._HINT)
 
@@ -537,6 +553,7 @@ class MicrostepSelector(QWidget):
             self.combo.blockSignals(True)
             self.combo.setCurrentIndex(i)
             self.combo.blockSignals(False)
+        self._refresh_effect()
 
     def _set_enabled(self, on: bool, tip: str, why: str = "") -> None:
         self.combo.setEnabled(on)
@@ -545,6 +562,22 @@ class MicrostepSelector(QWidget):
         self._why.setText("" if on else why)
         self._why.setToolTip(tip)
         self._why.setVisible(not on)
+        self._effect.setToolTip(tip)
+        self._refresh_effect()
+
+    def _refresh_effect(self) -> None:
+        """Caption for the value the combo shows now (a pending pick included);
+        visible only while the combo is enabled."""
+        n = self.combo.currentData()
+        if n is None:
+            self._effect.setText("")
+            self._effect.setVisible(False)
+            return
+        f = "{:g}".format(P.microstep_speed_factor(n))
+        self._effect.setText(
+            "speed x1" if n == P.DEFAULT_MICROSTEPS else "speed x{} vs 1/16".format(f)
+        )
+        self._effect.setVisible(self.combo.isEnabled())
 
     def _paint(self, ack: str) -> None:
         """ack = 'ok' | 'pending' | 'bad' → border (see theme.py) + a text cue."""

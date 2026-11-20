@@ -128,6 +128,31 @@ def test_cmd_microstep_rejects_anything_else(bad):
         P.cmd_microstep(bad)
 
 
+def test_microstep_speed_factor_is_16_over_ms():
+    # speed numbers are raw microsteps/s: a finer setting is slower, a coarser faster
+    expected = {1: 16, 2: 8, 4: 4, 8: 2, 16: 1, 32: 0.5, 64: 0.25, 128: 0.125, 256: 0.0625}
+    assert set(expected) == set(P.MICROSTEP_CHOICES)
+    for n, f in expected.items():
+        assert P.microstep_speed_factor(n) == f
+    assert P.microstep_speed_factor(P.DEFAULT_MICROSTEPS) == 1
+    assert [("{:g}".format(P.microstep_speed_factor(n))) for n in P.MICROSTEP_CHOICES] == [
+        "16", "8", "4", "2", "1", "0.5", "0.25", "0.125", "0.0625",
+    ]
+
+
+@pytest.mark.parametrize(
+    "bad", [0, -16, 3, 12, 15, 17, 512, True, False, 16.0, "16", None, [16]]
+)
+def test_microstep_speed_factor_rejects_anything_else(bad):
+    with pytest.raises(ValueError):
+        P.microstep_speed_factor(bad)
+
+
+def test_speed_limits_do_not_move_with_microstepping():
+    assert P.SPEED_MAX == 5000
+    assert P.clamp_speed(99999) == 5000 and P.cmd_speed(0, -99999) == "SPEED 0 -5000"
+
+
 def _telem_line(extra=""):
     return '{"phase":-1,"nphases":4,"remaining":0%s,"pumps":[]}' % extra
 

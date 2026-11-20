@@ -128,25 +128,29 @@ touchscreen. In fullscreen: **Esc** leaves fullscreen, **F11** toggles it, **Ctr
 
 **Live tab** (home) — direct manual control, one row per pump:
 
-- a **speed bar** (tap anywhere to jump, then drag) + a numeric box (steps/s);
+- a **speed bar** (tap anywhere to jump, then drag) + a numeric box (microsteps/s, see Microstepping below);
   the fill is anchored at zero — blue to the right for forward, amber to the
   left for reverse
 - all motors on one screen (two columns), no scrolling
 - **Hold / Free** toggle — switch to *Free* to drop holding torque and hand-turn the
   syringe during setup; back to *Hold* to lock it
-- **Jog** — run this pump at the set speed while idle
+- **Jog** — tap to start this pump at the set speed (while idle), tap again to stop; it
+  keeps running until you stop it
 - run indicator dot
 - While an automated sequence runs, the rows become a read-only mirror of telemetry.
 
 **Microstepping** — the **Microstepping** box in the Live tab's header row (next to
 *PUMPS*) sets the TMC2209 microstepping for all pumps at once: Full, 1/2 … 1/256
 (default 1/16). It needs firmware that knows the `MICROSTEP` command; on older firmware the
-box is disabled ("Firmware too old: reflash to enable"). It is also disabled while a program
-or any pump is running ("Stop all pumps first"). A pick shows at once (dashed border) and is
+box is disabled ("firmware too old — reflash"). A pick shows at once (dashed border) and is
 confirmed when the Octopus reports it back; if it doesn't (or refuses), the box reverts, turns
-red and the log says why. **Speed numbers keep their meaning** at every setting (steps/s at
-1/16), so changing it never makes a saved speed run faster or slower. The Octopus stores the
-setting itself; it is not part of a workspace.
+red and the log says why. **Speed numbers are microsteps/s at the chosen setting**, so the same
+number is *not* the same speed at every setting: a finer setting is slower (1/32 is half the
+speed of 1/16), a coarser one faster (1/8 is double). The small caption beside the box shows
+that for the value on screen: `speed x0.5 vs 1/16`, `speed x2 vs 1/16`, and `speed x1` at the
+default 1/16. You can change it while a pump is jogging (it carries on at the same number
+at the new resolution), but not while a program runs: then the box is disabled and says
+"program running". The Octopus stores the setting itself; it is not part of a workspace.
 
 **Automated tab** — build the sequence:
 

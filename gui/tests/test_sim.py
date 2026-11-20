@@ -195,35 +195,63 @@ def test_microstep_busy_while_a_program_runs():
     assert fw.drain() == [] and _telem(fw).microsteps == 32
 
 
-def test_microstep_busy_while_a_pump_runs():
+def test_microstep_allowed_while_a_pump_jogs():
     fw = FakeFirmware()
     fw.feed("JOG 4 800")
+    fw.drain()
+    assert _telem(fw).pumps[4].running
+    fw.feed("MICROSTEP 8")
+    assert fw.drain() == []               # a jog does not block it, no reply
+    t = _telem(fw)
+    assert t.microsteps == 8
+    assert t.pumps[4].running and t.pumps[4].speed == 800   # resumes at the same number
+    fw.feed("MICROSTEP 256")              # ...and again, still jogging
+    assert fw.drain() == [] and _telem(fw).microsteps == 256
+
+
+def test_microstep_allowed_while_a_manual_speed_is_set():
+    fw = FakeFirmware()
+    fw.feed("SPEED 0 1200")
+    fw.feed("JOG 0 1200")
+    fw.feed("MICROSTEP 64")
+    assert fw.drain() == [] and _telem(fw).microsteps == 64
+
+
+def test_microstep_busy_only_while_a_program_runs_even_with_a_jog():
+    fw = FakeFirmware()
+    fw.feed("JOG 2 500")
+    fw.feed(P.cmd_phasetime(0, 3600))
+    fw.feed("RUN")                        # a program takes over from the jog
     fw.drain()
     fw.feed("MICROSTEP 8")
     assert fw.drain() == ["!ERR MICROSTEP busy"]
     assert _telem(fw).microsteps == 16
-    fw.feed("JOG 4 0")                    # pump stopped -> allowed again
+    fw.feed("STOP")
     fw.feed("MICROSTEP 8")
     assert fw.drain() == [] and _telem(fw).microsteps == 8
 
 
 def test_microstep_validates_n_before_busy():
     fw = FakeFirmware()
-    fw.feed("JOG 0 500")
+    fw.feed(P.cmd_phasetime(0, 3600))
+    fw.feed("RUN")
     fw.drain()
     fw.feed("MICROSTEP 3")
     assert fw.drain() == [_USAGE]         # bad n wins over busy
 
 
 def test_microstep_does_not_change_reported_speeds():
+    # speed numbers are raw microsteps/s: the number the GUI sent is the number
+    # reported, whatever the setting (only the real shaft speed would differ)
     fw = FakeFirmware()
     fw.feed("SPEED 0 1000")
     fw.feed("JOG 0 1000")
     before = _telem(fw).pumps[0]
+    fw.feed("MICROSTEP 256")              # while jogging
+    assert _telem(fw).pumps[0].speed == before.speed == 1000
     fw.feed("STOP")
-    fw.feed("MICROSTEP 256")
     fw.feed("JOG 0 1000")
-    assert _telem(fw).pumps[0].speed == before.speed == 1000   # speed numbers keep meaning
+    assert _telem(fw).pumps[0].speed == 1000
 
 
 def test_legacy_firmware_has_no_ms_and_unknown_verb():

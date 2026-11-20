@@ -45,8 +45,9 @@ PHASE_SECONDS_MAX = 3600
 MAX_PHASES = 32  # firmware staging-buffer cap
 
 # TMC2209 microstepping, one setting for all 8 drivers (MICROSTEP <n>). Speed
-# numbers keep their meaning at any setting: they stay "steps/s at 1/16" and the
-# firmware scales VACTUAL by n/16, so the limits above do not move.
+# numbers are raw microsteps/s at the selected setting: the same number turns the
+# shaft 16/n times as fast as it does at 1/16 (1/32 is half, 1/8 is double). The
+# firmware sends VACTUAL unscaled, so the limits above do not move.
 MICROSTEP_CHOICES = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 DEFAULT_MICROSTEPS = 16
 
@@ -118,6 +119,18 @@ def cmd_microstep(n: int) -> str:
             )
         )
     return "MICROSTEP {}".format(n)
+
+
+def microstep_speed_factor(ms: int) -> float:
+    """How fast the same speed number turns the shaft at ``ms`` microsteps,
+    relative to 1/16 (the default): 16 / ms. Raises like cmd_microstep."""
+    if not valid_microsteps(ms):
+        raise ValueError(
+            "microsteps must be one of {}, got {!r}".format(
+                "|".join(str(c) for c in MICROSTEP_CHOICES), ms
+            )
+        )
+    return 16 / ms
 
 
 # ---- automated-program upload (Pi -> Octopus) ------------------------------

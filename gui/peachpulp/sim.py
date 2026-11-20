@@ -91,12 +91,15 @@ class FakeFirmware:
                 if v:
                     self.live_speeds[i] = v
         elif c == "MICROSTEP" and not self.legacy_firmware:
-            # validate n first, then busy. Success is silent, like every other
-            # verb: the new value just shows up in telemetry ("ms").
+            # validate n first, then busy (a running program only: a manual run /
+            # JOG keeps going, the firmware re-applies it at the new resolution).
+            # Success is silent, like every other verb: the new value just shows
+            # up in telemetry ("ms"). Speed numbers are raw microsteps/s, so the
+            # reported speeds do not change.
             n = _int(args[0]) if args else 0
             if n not in P.MICROSTEP_CHOICES:
                 self._out.append(_MICROSTEP_USAGE)
-            elif self._moving():
+            elif self.phase >= 0:
                 self._out.append("!ERR MICROSTEP busy")
             else:
                 self.microsteps = n
@@ -123,12 +126,6 @@ class FakeFirmware:
             pass  # telemetry is emitted continuously
         else:
             self._out.append("!ERR sim: bad `{}`".format(line.strip()))
-
-    def _moving(self) -> bool:
-        """A program is running, or any pump is turning (manual run / JOG)."""
-        return self.phase >= 0 or any(
-            m and sp != 0 for m, sp in zip(self.manual, self.live_speeds)
-        )
 
     # ---- periodic advance (call ~20 Hz) --------------------------------
     def tick(self) -> None:

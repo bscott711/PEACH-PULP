@@ -20,7 +20,7 @@ FIRMWARE_VERBS = {
     "SPEED", "PHASETIME", "ENABLE", "JOG",
     "PROGCLEAR", "PROGADD", "PROGCOMMIT",
     "DFU",  # reboot into the ROM bootloader (src/core/DfuReboot.*)
-    "MICROSTEP",  # MICROSTEP <1|2|4|8|16|32|64|128|256>, all drivers, idle only
+    "MICROSTEP",  # MICROSTEP <1|2|4|8|16|32|64|128|256>, all drivers, not while a program runs
 }
 
 
@@ -154,7 +154,28 @@ def test_missing_ms_key_means_firmware_too_old():
 
 def test_gui_parses_microstep_errors():
     # !ERR MICROSTEP 1|2|4|8|16|32|64|128|256   (bad / missing / non-integer n)
-    # !ERR MICROSTEP busy                        (program or any pump running)
+    # !ERR MICROSTEP busy                        (a program is running; a JOG is fine)
     for er in ("!ERR MICROSTEP 1|2|4|8|16|32|64|128|256", "!ERR MICROSTEP busy"):
         kind, msg = P.parse_line(er)
         assert kind == "error" and msg.startswith("MICROSTEP")
+
+
+def test_microstep_busy_only_for_a_running_program_and_speed_is_raw():
+    # Rev 2: a manual run / JOG does not block MICROSTEP (the node re-applies it at
+    # the new resolution); a running program does. Speed numbers are raw
+    # microsteps/s: the wire speed is the same whatever the microstepping, and the
+    # GUI factor against 1/16 is 16 / ms.
+    from peachpulp.sim import FakeFirmware
+
+    fw = FakeFirmware()
+    fw.feed(P.cmd_jog(0, 500))
+    fw.feed(P.cmd_microstep(32))
+    assert fw.drain() == []
+    fw.feed(P.cmd_jog(0, 0))
+    fw.feed(P.cmd_run())
+    fw.drain()
+    fw.feed(P.cmd_microstep(8))
+    assert fw.drain() == ["!ERR MICROSTEP busy"]
+    assert P.cmd_speed(0, 1000) == "SPEED 0 1000"
+    assert P.cmd_jog(0, 1000) == "JOG 0 1000"
+    assert P.microstep_speed_factor(32) == 0.5 and P.microstep_speed_factor(8) == 2

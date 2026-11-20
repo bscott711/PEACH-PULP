@@ -94,7 +94,7 @@ Line-based ASCII over USB CDC, `\n`-terminated.
 | `SPEED <idx> <steps>` | live/manual speed for a pump (used by `JOG`; not the phase speed) |
 | `JOG <idx> <steps>` | run pump `idx` at `steps` while idle; `0` stops it |
 | `ENABLE <idx> <0\|1>` | holding torque on/off for a pump |
-| `MICROSTEP <n>` | microstepping for **all** drivers, `n` ∈ {1, 2, 4, 8, 16, 32, 64, 128, 256}; idle only |
+| `MICROSTEP <n>` | microstepping for **all** drivers, `n` ∈ {1, 2, 4, 8, 16, 32, 64, 128, 256}; not while a program runs (a manual run / `JOG` is fine) |
 | `PROGCLEAR` | begin staging a new program |
 | `PROGADD <sec> <s0> <s1> … <s7>` | append one phase: duration + 8 motor speeds |
 | `PROGCOMMIT` | swap the staged program in atomically (rejects an empty program) |
@@ -109,16 +109,20 @@ on every edit and once on connect.
 stored, or an invalid value → 16). Errors, validated in this order:
 
 - `!ERR MICROSTEP 1|2|4|8|16|32|64|128|256` — `n` missing, non-integer or not a choice;
-- `!ERR MICROSTEP busy` — a program is running or any pump is moving (manual run / `JOG`).
+- `!ERR MICROSTEP busy` — a program is running. A manual run / `JOG` does **not** block it: the
+  node halts the shaft, re-applies the driver config at the new resolution (Hold/Free kept) and
+  resumes at the same speed number.
 
 Success is silent, like every other verb: the new value shows up as `"ms"` in telemetry. The
 GUI treats that as the confirmation, and a *missing* `ms` as "firmware too old" (selector
-disabled). **Speed semantics:** a speed number keeps its physical meaning at every setting —
-speed units are "steps/s at 1/16 microstep" — so the firmware sends
-`VACTUAL = round(speed × ms / 16)` (non-zero speeds never below ±1, clamped to
-`MOTOR_MAX_SAFE_STEPS`). At 16 that is byte-identical to before, and the GUI speed limits
-(`SPEED_MAX` 5000) do not change. Microstepping is firmware state only: it is not part of a
-workspace or of the phase-program format.
+disabled). **Speed semantics:** a speed number is **raw microsteps/s at the selected setting**:
+the firmware sends `VACTUAL = clamp(speed, ±MOTOR_MAX_SAFE_STEPS)` with no rescaling. The same
+number therefore turns the shaft `16/ms` times as fast as it does at 1/16 (GUI helper
+`microstep_speed_factor(ms)`): a finer setting is slower for the same number (1/32 is half
+speed, 1/256 is 1/16), a coarser one faster (1/8 is double, Full is 16×). At 16 nothing
+changes, and the GUI speed limits (`SPEED_MAX` 5000) do not move. The Live-tab selector shows
+the factor for the value on screen (`speed x0.5 vs 1/16`). Microstepping is firmware state
+only: it is not part of a workspace or of the phase-program format.
 
 **Octopus → Pi:** JSON telemetry ~5 Hz —
 `{"phase":1,"nphases":5,"remaining":42,"ms":16,"pumps":[{"sp":..,"run":..,"en":..,"ok":..}]}`

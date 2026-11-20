@@ -87,6 +87,12 @@ def test_blind_driver_marks_the_dot(row):
     assert row._dot.toolTip() == ""
 
 
+def test_jog_tooltip_says_it_latches(row):
+    tip = row._jog.toolTip()
+    assert tip == "tap to start, tap again to stop (at the set speed, while idle)"
+    assert "tap again to stop" in tip and "hold" not in tip.lower()
+
+
 def test_running_sequence_clears_pending_and_mirrors(row):
     row._hold.click()  # -> Free, pending
     row.apply_state(P.PumpState(enabled=True, running=True), protocol_running=True)
@@ -269,7 +275,8 @@ def test_microstep_busy_error_reply_reverts_and_reports(sel):
     sel.on_error("MICROSTEP busy")
     assert sel.combo.currentData() == 16
     assert sel._want is None and not sel._confirm.isActive() and _ack(sel) == "bad"
-    assert len(sel.msgs) == 1 and "pumps are running" in sel.msgs[0]
+    assert len(sel.msgs) == 1 and "a program is running" in sel.msgs[0]
+    assert "pumps are running" not in sel.msgs[0]
 
 
 def test_microstep_usage_error_reply_reverts_and_reports(sel):
@@ -287,17 +294,29 @@ def test_microstep_error_without_a_pick_in_flight_is_ignored(sel):
 def test_microstep_disabled_while_a_program_runs(sel):
     sel.apply_telemetry(_telem(16, phase=1))
     assert not sel.combo.isEnabled()
-    assert "Stop all pumps" in sel.combo.toolTip()
+    assert sel.combo.toolTip() == "Stop the program first"
     sel.apply_telemetry(_telem(16))
     assert sel.combo.isEnabled()
 
 
-def test_microstep_disabled_while_any_pump_runs(sel):
+def test_microstep_stays_enabled_while_a_pump_jogs(sel):
     sel.apply_telemetry(_telem(16, running=[3]))    # manual run / JOG, no program
-    assert not sel.combo.isEnabled()
-    assert "Stop all pumps" in sel.combo.toolTip()
-    sel.apply_telemetry(_telem(16))
     assert sel.combo.isEnabled()
+    assert "while a pump jogs" in sel.combo.toolTip()
+    assert "Stop" not in sel.combo.toolTip()
+    sel.apply_telemetry(_telem(16, phase=2, running=[3]))   # a program does block it
+    assert not sel.combo.isEnabled()
+    sel.apply_telemetry(_telem(16, running=[0, 1, 2, 3]))
+    assert sel.combo.isEnabled()
+
+
+def test_microstep_pick_while_a_pump_jogs_is_sent_and_confirmed(sel):
+    sel.apply_telemetry(_telem(16, running=[3]))
+    _pick(sel, 32)
+    assert sel.sent == [32] and _ack(sel) == "pending"
+    sel.apply_telemetry(_telem(32, running=[3]))    # resumed at the new resolution
+    assert sel._want is None and _ack(sel) == "ok" and sel.combo.isEnabled()
+    assert sel.msgs == []
 
 
 def test_microstep_disabled_with_tooltip_when_firmware_too_old(sel):
@@ -325,14 +344,15 @@ def test_microstep_caption_when_firmware_too_old(sel):
     assert sel.combo.toolTip() == "Firmware too old: reflash to enable"
 
 
-def test_microstep_caption_while_a_program_or_pump_runs(sel):
+def test_microstep_caption_while_a_program_runs_not_a_pump(sel):
     sel.apply_telemetry(_telem(16, phase=1))
-    assert _why(sel) == ("stop pumps first", True)
+    assert _why(sel) == ("program running", True)
+    assert sel.combo.toolTip() == "Stop the program first"
     sel.apply_telemetry(_telem(16))
     assert _why(sel)[1] is False
-    sel.apply_telemetry(_telem(16, running=[3]))
-    assert _why(sel) == ("stop pumps first", True)
-    assert "Stop all pumps" in sel.combo.toolTip()
+    sel.apply_telemetry(_telem(16, running=[3]))      # a jogging pump is fine
+    assert _why(sel) == ("", False)
+    assert sel.combo.isEnabled()
 
 
 def test_microstep_caption_hidden_when_enabled(sel):
@@ -347,9 +367,69 @@ def test_microstep_caption_hidden_when_enabled(sel):
 def test_microstep_caption_is_short_and_unwrapped(sel):
     assert not sel._why.wordWrap()
     for t, text in ((_telem(None), "firmware too old — reflash"),
-                    (_telem(16, phase=1), "stop pumps first")):
+                    (_telem(16, phase=1), "program running")):
         sel.apply_telemetry(t)
         assert len(sel._why.text()) <= 28 and sel._why.text() == text
+
+
+def _effect(w):
+    """(text, shown) of the visible 'what does this setting do to speed' caption."""
+    return w._effect.text(), not w._effect.isHidden()
+
+
+def test_microstep_speed_effect_caption_for_the_current_value(sel):
+    assert _effect(sel) == ("speed x1", True)         # 1/16: unchanged
+    sel.apply_telemetry(_telem(32))
+    assert _effect(sel) == ("speed x0.5 vs 1/16", True)
+    sel.apply_telemetry(_telem(8))
+    assert _effect(sel) == ("speed x2 vs 1/16", True)
+    sel.apply_telemetry(_telem(1))
+    assert _effect(sel) == ("speed x16 vs 1/16", True)
+    sel.apply_telemetry(_telem(256))
+    assert _effect(sel) == ("speed x0.0625 vs 1/16", True)
+
+
+def test_microstep_speed_effect_caption_follows_a_pending_pick_and_revert(sel):
+    _pick(sel, 32)                                    # shown at once, before telemetry
+    assert _effect(sel) == ("speed x0.5 vs 1/16", True)
+    _pick(sel, 8)
+    assert _effect(sel) == ("speed x2 vs 1/16", True)
+    sel._unconfirmed()                                # reverts to the telemetry value
+    assert _effect(sel) == ("speed x1", True)
+    _pick(sel, 4)
+    sel.on_error("MICROSTEP busy")                    # refused: back to 1/16
+    assert _effect(sel) == ("speed x1", True)
+
+
+def test_microstep_speed_effect_caption_hidden_while_disabled(sel):
+    for t in (_telem(None), _telem(32, phase=1)):
+        sel.apply_telemetry(t)
+        assert not sel.combo.isEnabled()
+        assert _effect(sel)[1] is False
+        assert _why(sel)[1] is True                   # the why-caption takes over
+    sel.apply_telemetry(_telem(32))
+    assert _effect(sel) == ("speed x0.5 vs 1/16", True) and _why(sel)[1] is False
+
+
+def test_microstep_speed_effect_caption_hidden_before_first_telemetry(app):
+    w = MicrostepSelector()
+    assert _effect(w)[1] is False and _why(w)[1] is True
+
+
+def test_microstep_speed_effect_caption_is_muted_and_unwrapped(sel):
+    assert not sel._effect.wordWrap()
+    assert sel._effect.objectName() == "microstepEffect"
+    assert sel._effect.styleSheet() == sel._why.styleSheet()
+    for n in P.MICROSTEP_CHOICES:
+        sel.apply_telemetry(_telem(n))
+        assert sel._effect.text().startswith("speed x")
+        assert len(sel._effect.text()) <= 24
+
+
+def test_microstep_hint_describes_raw_microsteps_per_second(sel):
+    tip = sel.combo.toolTip()
+    assert "microsteps/s" in tip and "finer setting is slower" in tip
+    assert "keep their meaning" not in tip and "steps/s at 1/16" not in tip
 
 
 _NO_MS_MSG = (
@@ -417,15 +497,61 @@ def test_live_panel_pick_round_trips_through_the_sim(app):
     assert panel.microstep.combo.currentData() == 128
 
 
-def test_live_panel_disables_with_the_sim_busy_and_legacy(app):
+def test_live_panel_header_row_fits_800px_with_the_longest_caption(app):
+    """The selector + its widest speed caption must not push the Live tab past an
+    800 px touchscreen (checked with the real theme, which is what the Pi runs)."""
+    from peachpulp import theme
+
+    style, pal, qss = app.style().objectName(), app.palette(), app.styleSheet()
+    theme.apply_theme(app)
+    try:
+        panel = LivePanel(P.ACTIVE_PUMPS)
+        widths = {}
+        for n in P.MICROSTEP_CHOICES:
+            panel.apply_telemetry(_telem(n))
+            assert not panel.microstep._effect.isHidden()
+            widths[n] = panel.microstep._effect.sizeHint().width()
+        assert max(widths, key=widths.get) == 256        # "speed x0.0625 vs 1/16"
+        panel.apply_telemetry(_telem(256))
+        assert panel.microstep._effect.text() == "speed x0.0625 vs 1/16"
+        panel.resize(800, 480)
+        panel.show()
+        app.processEvents()
+        assert panel.microstep.minimumSizeHint().width() < 500
+        assert panel.minimumSizeHint().width() <= 800
+        assert panel.microstep.geometry().right() <= 800   # not clipped off-screen
+        panel.hide()
+    finally:
+        app.setStyleSheet(qss)
+        app.setPalette(pal)
+        app.setStyle(style)
+
+
+def test_live_panel_microstep_stays_usable_while_jogging_but_not_in_a_program(app):
     fw, panel = FakeFirmware(), LivePanel(P.ACTIVE_PUMPS)
+    panel.microstepRequested.connect(lambda n: fw.feed(P.cmd_microstep(n)))
     fw.feed("JOG 1 600")
     _fw_roundtrip(panel, fw)
-    assert not panel.microstep.combo.isEnabled()
+    assert panel.microstep.combo.isEnabled()          # a jog does not block it
+    _pick(panel.microstep, 32)
+    assert fw.drain() == []                           # firmware accepted silently
+    _fw_roundtrip(panel, fw)
+    assert panel.microstep._want is None and _ack(panel.microstep) == "ok"
+    assert panel.microstep.combo.currentData() == 32
+
     fw.feed("JOG 1 0")
+    fw.feed(P.cmd_phasetime(0, 3600))
+    fw.feed("RUN")
+    _fw_roundtrip(panel, fw)
+    assert not panel.microstep.combo.isEnabled()      # a running program does
+    assert panel.microstep._why.text() == "program running"
+    fw.feed("STOP")
     _fw_roundtrip(panel, fw)
     assert panel.microstep.combo.isEnabled()
 
+
+def test_live_panel_legacy_firmware_disables_the_selector(app):
+    panel = LivePanel(P.ACTIVE_PUMPS)
     old = FakeFirmware(legacy_firmware=True)
     _fw_roundtrip(panel, old)
     assert not panel.microstep.combo.isEnabled()
@@ -447,10 +573,20 @@ def test_main_window_sends_and_routes_the_busy_error(app, tmp_path, monkeypatch)
     link._on_telem()
     assert sel._want is None and _ack(sel) == "ok"
 
-    # the pump starts just before the GUI has seen it: the firmware says busy
+    # a jog is no obstacle: the firmware takes the new value, the log stays quiet
     link.fw.feed("JOG 0 500")
     _pick(sel, 8)
-    assert link.fw.microsteps == 32
-    assert sel.combo.currentData() == 32 and _ack(sel) == "bad"
+    assert link.fw.microsteps == 8
+    link._on_telem()
+    assert sel.combo.currentData() == 8 and _ack(sel) == "ok"
+    assert "MICROSTEP busy" not in win._log.toPlainText()
+
+    # a program starts just before the GUI has seen it: the firmware says busy
+    link.fw.feed("JOG 0 0")
+    link.fw.feed("RUN")
+    _pick(sel, 4)
+    assert link.fw.microsteps == 8
+    assert sel.combo.currentData() == 8 and _ack(sel) == "bad"
     log = win._log.toPlainText()
-    assert "MICROSTEP busy" in log and "staying at 1/32" in log
+    assert "MICROSTEP busy" in log and "staying at 1/8" in log
+    assert "a program is running" in log
